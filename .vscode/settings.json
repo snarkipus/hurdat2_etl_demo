@@ -1,0 +1,23 @@
+{
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.ruff": true,
+        "source.organizeImports.ruff": true
+    },
+    "ruff.format.args": ["--config=pyproject.toml"],
+    "python.linting.enabled": true,
+    "python.linting.lintOnSave": true,
+    "python.formatting.provider": "ruff",
+    "editor.rulers": [88],
+    "python.linting.mypyEnabled": true,
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll": true,
+            "source.organizeImports": true
+        }
+    }
+}
