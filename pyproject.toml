@@ -1,6 +1,7 @@
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+exclude = ["tests/*"]
 
 [tool.ruff.lint]
 select = [
@@ -32,19 +33,50 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
 disallow_any_generics = true
-
-[tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "-ra -q --cov"
-testpaths = ["tests"]
+exclude = "tests/*"
 
 [tool.coverage.run]
 branch = true
-source = ["src"]
+source = ["src/hurdat2_etl"]  # Change this to include the src directory
+relative_files = true         # Add this line to help with path resolution
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=src/hurdat2_etl --cov-report=term-missing --cov-report=html --cov-report=lcov:lcov.info"
+testpaths = ["tests"]
 
 [tool.coverage.report]
+skip_empty = true
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
     "if __name__ == .__main__.:",
+    "pass"
 ]
+
+[tool.poetry]
+name = "reference"
+version = "0.1.0"
+description = "ETL pipeline for HURDAT2 data"
+authors = ["matt@jacksonsix.com"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = ">3.11, <3.12"
+pydantic = "^2.6.1"
+tqdm = "^4.66.1"
+pysqlite3-binary = "^0.5.2"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.0"
+pytest = "^8.3.4"
+pytest-cov = "^6.0.0"
+packaging = "^24.2"
+ruff = "^0.9.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

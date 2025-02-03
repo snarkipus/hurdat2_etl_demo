@@ -1,0 +1,34 @@
+"""ETL Project Configuration Settings"""
+
+from pathlib import Path
+from typing import Final
+
+
+class Settings:
+    """ETL configuration settings"""
+
+    # Base directory
+    BASE_DIR: Final[Path] = Path(__file__).parent.parent.parent.parent
+
+    # Data extraction settings
+    SOURCE_PATH: str = "data/source"
+    TARGET_PATH: str = "data/target"
+
+    # Data files
+    HURDAT2_DATA_FILE: Final[Path] = BASE_DIR / "ref" / "hurdat2-1851-2023-051124.txt"
+
+    # Database configuration
+    DB_NAME: str = "hurdat2.db"
+    DB_PATH: Final[Path] = BASE_DIR / DB_NAME
+
+    # SQLite configuration
+    SPATIALITE_LIBRARY_PATH: str = "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
+
+    # Logging configuration
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "etl.log"
+
+    # Validation
+    MISSING_VALUES: Final[set[int]] = {-999, -99}
+    MAX_LATITUDE: Final[float] = 90.0
+    MAX_LONGITUDE: Final[float] = 180.0

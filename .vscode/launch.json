@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug Pytest Tests",
+        "type": "python",
+        "request": "launch",
+        "module": "pytest",
+        "args": [
+          "--maxfail=1",  // Stop after the first failure
+          "--disable-warnings"  // Disable warnings display
+        ],
+        "justMyCode": false  // Set to true to debug only user-written code
+      }
+    ]
+  }
+  

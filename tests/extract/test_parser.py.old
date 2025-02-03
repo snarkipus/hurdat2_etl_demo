@@ -1,0 +1,228 @@
+from pathlib import Path
+
+import pytest
+
+from hurdat2_etl.exceptions import ExtractionError
+from hurdat2_etl.extract.parser import parse_header, parse_hurdat2, parse_observation
+from hurdat2_etl.extract.types import StormStatus
+from hurdat2_etl.models import Observation, Point, Storm
+
+TEST_DATA_DIR = Path(__file__).parent.parent / "data" / "hurdat2"
+
+
+def test_parse_header():
+    header = "AL092021, IDA, 40"
+    basin, number, year, name, count = parse_header(header)
+
+    assert basin == "AL"
+    assert number == 9
+    assert year == 2021
+    assert name == "IDA"
+    assert count == 40
+
+
+def test_parse_header_invalid():
+    with pytest.raises(ExtractionError):
+        parse_header("invalid")
+
+
+def test_parse_observation():
+    line = "20210829,1200,L,HU,29.1N,90.2W,130,931,130,110,80,110,70,60,40,60,45,35,20,30,10"
+    obs = parse_observation(line)
+
+    assert obs.date.year == 2021
+    assert obs.date.month == 8
+    assert obs.date.day == 29
+    assert obs.record_identifier == "L"
+    assert obs.status == StormStatus.HURRICANE
+    assert obs.location.latitude == 29.1
+    assert obs.location.longitude == -90.2
+    assert obs.max_wind == 130
+    assert obs.min_pressure == 931
+
+
+def test_parse_hurdat2():
+    storms = list(parse_hurdat2(TEST_DATA_DIR / "test_data.txt"))
+    assert len(storms) == 1
+
+    storm = storms[0]
+    assert storm.basin == "AL"
+    assert storm.cyclone_number == 12
+    assert storm.year == 2007
+    assert storm.name == "KAREN"
+    assert len(storm.observations) == 19
+    assert storm.observations[0].status == StormStatus.TROPICAL_DEPRESSION
+    assert storm.storm_id == "AL122007"
+
+
+def test_point_coordinates():
+    """Test point coordinate parsing."""
+    cases = [
+        # Latitude tests
+        ({"latitude": "29.1N", "longitude": "0.0E"}, {"latitude": 29.1, "longitude": 0.0}),
+        ({"latitude": "90.0S", "longitude": "0.0E"}, {"latitude": -90.0, "longitude": 0.0}),
+        # Longitude tests
+        ({"latitude": "0.0N", "longitude": "90.2W"}, {"latitude": 0.0, "longitude": -90.2}),
+        ({"latitude": "0.0N", "longitude": "180.0E"}, {"latitude": 0.0, "longitude": 180.0}),
+    ]
+
+    for inputs, expected in cases:
+        point = Point(**inputs)
+        assert point.latitude == expected["latitude"]
+        assert point.longitude == expected["longitude"]
+
+def test_point_invalid_coordinates():
+    """Test invalid coordinate handling."""
+    invalid_cases = [
+        "90.2X",  # Invalid direction
+        "xyz",    # No numbers
+        "500N",   # Out of range
+        "",       # Empty
+    ]
+
+    for invalid in invalid_cases:
+        with pytest.raises(ValueError):
+            Point(latitude=invalid, longitude="0.0E")
+
+def test_storm_validation():
+    """Test storm model validation."""
+    # Test valid storm
+    storm = Storm(
+        basin="AL",
+        cyclone_number=1,
+        year=2021,
+        name="TEST",
+        observations=[]
+    )
+    assert storm.storm_id == "AL12021"
+
+    # Test invalid basin
+    with pytest.raises(ValueError):
+        Storm(
+            basin="XX",
+            cyclone_number=1,
+            year=2021,
+            name="TEST",
+            observations=[]
+        )
+
+def test_observation_missing_values():
+    """Test observation with missing values."""
+    line = "20210829,1200,L,HU,29.1N,90.2W,130,931,-999,-999,-999,-999,-999,-999,-999,-999,-999,-999,-999,-999,-999"
+    obs = parse_observation(line)
+
+    assert obs.ne34 is None
+    assert obs.se34 is None
+    assert obs.max_wind_radius is None
+
+def test_parse_coordinate():
+    """Test coordinate string parsing."""
+    test_cases = [
+        ("29.1N", 29.1),      # North latitude
+        ("90.2W", -90.2),     # West longitude
+        ("0.0N", 0.0),        # Zero latitude
+        ("180.0E", 180.0),    # Max longitude
+    ]
+
+    for coord_str, expected in test_cases:
+        assert Point.parse_coordinate(coord_str) == expected
+
+
+def test_coordinate_validation():
+    """Test coordinate validation errors."""
+    invalid_cases = [
+        # Latitude errors
+        ("91.0N", "out of range"),
+        ("90.2E", "Invalid latitude direction"),
+        # Longitude errors
+        ("181.0E", "out of range"),
+        ("90.2N", "Invalid longitude direction"),
+        # Format errors
+        ("ABC", "Invalid format"),
+        ("", "Invalid format"),
+        ("90.2", "Invalid format"),
+    ]
+
+    for invalid, error in invalid_cases:
+        # Test latitude
+        with pytest.raises(ValueError, match=error):
+            Point(latitude=invalid, longitude="0.0E")
+        # Test longitude
+        with pytest.raises(ValueError, match=error):
+            Point(latitude="0.0N", longitude=invalid)
+
+def test_parse_coordinate_invalid():
+    """Test invalid coordinate parsing."""
+    invalid_cases = [
+        ("91.0N", "out of range"),      # Over 90
+        ("181.0E", "out of range"),     # Over 180
+        ("ABC", "Invalid format"),      # Non-numeric
+        ("90.2X", "Invalid format"),    # Bad direction
+        ("", "Invalid format"),         # Empty
+    ]
+
+    for invalid, error in invalid_cases:
+        with pytest.raises(ValueError, match=error):
+            Point.parse_coordinate(invalid)
+
+def test_parse_missing_values():
+    """Test parsing of missing value indicators."""
+    test_cases = [
+        ("-999", None),
+        ("-99", None),
+        ("0", 0),
+        ("100", 100),
+    ]
+
+    for value, expected in test_cases:
+        assert Observation.parse_possible_missing(value) == expected
+
+def test_parse_observation_file_errors():
+    """Test file parsing error cases."""
+    with pytest.raises(ExtractionError, match="Invalid header"):
+        parse_hurdat2(TEST_DATA_DIR / "invalid_header.txt")
+
+    with pytest.raises(ExtractionError, match="Empty line"):
+        parse_hurdat2(TEST_DATA_DIR / "empty_line.txt")
+
+    with pytest.raises(ExtractionError, match="Invalid format"):
+        parse_hurdat2(TEST_DATA_DIR / "invalid_format.txt")
+
+
+def test_coordinate_parsing():
+    """Test Point.parse_coordinate class method."""
+    test_cases = [
+        ("29.1N", 29.1),      # North latitude
+        ("90.2W", -90.2),     # West longitude
+        ("0.0N", 0.0),        # Zero latitude
+        ("180.0E", 180.0),    # Max longitude
+    ]
+
+    for coord_str, expected in test_cases:
+        assert Point.parse_coordinate(coord_str) == expected
+
+
+def test_point_model():
+    """Test Point model construction and validation."""
+    # Valid points
+    point = Point(latitude=45.0, longitude=-90.0)
+    assert point.latitude == 45.0
+    assert point.longitude == -90.0
+
+    # Invalid points
+    with pytest.raises(ValueError, match="out of range"):
+        Point(latitude=91.0, longitude=0.0)
+
+    with pytest.raises(ValueError, match="out of range"):
+        Point(latitude=0.0, longitude=181.0)
+
+
+def test_point_from_coordinates():
+    """Test Point construction from coordinate strings."""
+    point = Point(
+        latitude=Point.parse_coordinate("29.1N"),
+        longitude=Point.parse_coordinate("90.2W")
+    )
+
+    assert point.latitude == 29.1
+    assert point.longitude == -90.2

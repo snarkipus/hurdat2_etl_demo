@@ -23,11 +23,9 @@ wheels/
 # Project specific
 *.db
 *.db-journal
-*.md
-!README.md
 doc/
 docs/
-ref/
+
 
 # IDE
 .vscode/*
@@ -51,3 +49,4 @@ ENV/
 .coverage
 htmlcov/
 .pytest_cache/
+lcov.info
