@@ -1,3 +1,5 @@
+"""Data models for HURDAT2 ETL pipeline."""
+
 import re
 from datetime import datetime
 from typing import ClassVar, Final
@@ -9,56 +11,64 @@ from hurdat2_etl.extract.types import StormStatus
 
 
 class Point(BaseModel):
-    """Geographic point with latitude and longitude (WGS84)"""
+    """Geographic point with latitude and longitude in WGS84 decimal degrees"""
 
-    # Constants for coordinate validation
     COORDINATE_PATTERN: ClassVar[re.Pattern[str]] = re.compile(
         r"(\d+\.?\d*)\s*([NSEW])$"
     )
 
-    latitude: float | str = Field(description="Latitude in decimal degrees")
-    longitude: float | str = Field(description="Longitude in decimal degrees")
+    latitude: float = Field(description="Latitude in decimal degrees")
+    longitude: float = Field(description="Longitude in decimal degrees")
 
     @field_validator("latitude", mode="before")
     @classmethod
-    def validate_latitude(cls, value: str | float) -> float:
-        """Parse and validate latitude."""
-        if isinstance(value, float):
-            return value
-        try:
-            return cls.parse_coordinate(value)
-        except ValueError as e:
-            raise ValueError(f"Invalid latitude: {e}") from e
+    def validate_latitude(cls, value: str) -> float:
+        """Convert HURDAT2 latitude to decimal degrees."""
+        if isinstance(value, str):
+            return cls.parse_hurdat2(value, is_latitude=True)
+        return value
 
     @field_validator("longitude", mode="before")
     @classmethod
-    def validate_longitude(cls, value: str | float) -> float:
-        """Parse and validate longitude."""
-        if isinstance(value, float):
-            return value
-        try:
-            return cls.parse_coordinate(value)
-        except ValueError as e:
-            raise ValueError(f"Invalid longitude: {e}") from e
+    def validate_longitude(cls, value: str) -> float:
+        """Convert HURDAT2 longitude to decimal degrees."""
+        if isinstance(value, str):
+            return cls.parse_hurdat2(value, is_latitude=False)
+        return value
 
     @classmethod
-    def parse_coordinate(cls, value: str) -> float:
-        """Parse coordinate with NSEW notation (e.g. '90.2W')."""
-        value = value.strip().upper()
-        match = cls.COORDINATE_PATTERN.match(value)
+    def parse_hurdat2(cls, coord: str, is_latitude: bool) -> float:
+        """Convert HURDAT2 coordinate string to decimal degrees."""
+        match = cls.COORDINATE_PATTERN.match(coord.strip().upper())
         if not match:
-            raise ValueError(f"Invalid format: {value}")
+            raise ValueError(f"Invalid HURDAT2 format: {coord}")
 
         degrees = float(match.group(1))
         direction = match.group(2)
 
-        # Validate coordinate ranges
-        if direction in "NS" and degrees > settings.Settings.MAX_LATITUDE:
-            raise ValueError(f"Latitude {degrees} out of range [-90, 90]")
-        elif direction in "EW" and degrees > settings.Settings.MAX_LONGITUDE:
-            raise ValueError(f"Longitude {degrees} out of range [-180, 180]")
+        if is_latitude:
+            if direction not in "NS":
+                raise ValueError(f"Latitude must use N/S direction, got: {direction}")
+            if not (
+                -settings.Settings.MAX_LATITUDE
+                <= degrees
+                <= settings.Settings.MAX_LATITUDE
+            ):
+                raise ValueError(f"Latitude {degrees} out of range [-90, 90]")
+            return -degrees if direction == "S" else degrees
+        else:
+            if direction not in "EW":
+                raise ValueError(f"Longitude must use E/W direction, got: {direction}")
+            if not (
+                (degrees >= -settings.Settings.MAX_LONGITUDE)
+                and (degrees <= settings.Settings.MAX_LONGITUDE)
+            ):
+                raise ValueError(f"Longitude {degrees} out of range [-180, 180]")
+            return -degrees if direction == "W" else degrees
 
-        return -degrees if direction in ("S", "W") else degrees
+    def to_wkt(self) -> str:
+        """Convert to Well-Known Text format."""
+        return f"POINT({self.longitude} {self.latitude})"
 
 
 class Observation(BaseModel):
@@ -146,3 +156,8 @@ class Storm(BaseModel):
     def storm_id(self) -> str:
         """Generate storm ID from components."""
         return f"{self.basin}{self.cyclone_number}{self.year}"
+
+    @property
+    def observation_count(self) -> int:
+        """Get the number of observations."""
+        return len(self.observations)

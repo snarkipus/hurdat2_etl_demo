@@ -1,7 +1,15 @@
-"""Data Transformation Module"""
+"""Transform module containing data transformation logic."""
+
+from ..models import Observation, Storm
 
 
-def transform_data(data: str) -> str:
-    """Transform data according to project requirements"""
-    # Example transformation: Convert all text to lowercase
-    return data.lower()
+def transform_data(storm: Storm) -> Storm:
+    """Perform basic data transformation."""
+    # Currently a stub - to be expanded with actual transformation logic
+    return storm
+
+
+def normalize_data(observation: Observation) -> Observation:
+    """Normalize observation data."""
+    # Currently a stub - to be expanded with actual normalization logic
+    return observation

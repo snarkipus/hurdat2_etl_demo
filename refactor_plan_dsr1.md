@@ -12,7 +12,6 @@ The existing `etl_script.py` contains:
 
 ## Proposed Modular Structure
 The code will be reorganized into the following modules:
-
 ```
 ./src/
 ├── hurdat2_etl/
@@ -45,15 +44,15 @@ The code will be reorganized into the following modules:
 - Data validation logic
 
 #### Transform
-- Data transformation logic
-- Data validation rules
-- Data normalization
+- Data transformation logic (stubbed for now)
+- Basic data normalization
 
 #### Load
 - `init_spatialite_db()`
 - `create_spatialite_connection()`
 - `insert_observations()`
 - Database schema management
+- Database validation
 
 ### 2. Mapping of Existing Functions to New Locations
 | Current Function                  | New Location                     |
@@ -64,7 +63,7 @@ The code will be reorganized into the following modules:
 | `init_spatialite_db()`           | `src/hurdat2_etl/load/load.py`     |
 | `create_spatialite_connection()`| `src/hurdat2_etl/load/load.py`     |
 | `insert_observations()`         | `src/hurdat2_etl/load/load.py`     |
-| `validate_database()`           | `src/hurdat2_etl/transform/transform.py` |
+| `validate_database()`           | `src/hurdat2_etl/load/load.py`     |
 
 ### 3. Required Changes to Function Signatures
 - Standardize function signatures to work with the new pipeline
@@ -84,8 +83,8 @@ The code will be reorganized into the following modules:
 ### 6. Migration Sequence with Fallback Points
 1. Create new module structure
 2. Migrate extract functionality
-3. Implement transform logic
-4. Refactor load operations
+3. Implement basic transform logic
+4. Refactor load operations including validation
 5. Update main execution flow
 
 ### 7. Timeline Estimates
@@ -105,7 +104,6 @@ The code will be reorganized into the following modules:
 - Code quality metrics are improved
 - Documentation is complete
 
-
 ## Technical Debt and Edge Cases
 - Error handling needs to be centralized
 - Data validation needs to be more robust
@@ -113,8 +111,17 @@ The code will be reorganized into the following modules:
 - Better logging and monitoring
 - Proper handling of edge cases in coordinate parsing
 
+## Progress Update (2/3/2025)
+- Extract functionality is partially implemented
+- Models and basic validation are in place
+- Testing framework is established
+- Remaining functionality from etl_script.py needs to be migrated
+
 ## Next Steps
-1. Create the new module structure
-2. Begin with extracting the extract logic
-3. Implement unit tests for core components
-4. Gradually refactor remaining components
+1. Implement remaining ETL functionality
+2. Add additional validation and error handling
+3. Expand test coverage
+4. Update documentation
+5. Review and refine the pipeline architecture
+
+This plan outlines the migration of the ETL functionality while maintaining the existing capabilities and improving the codebase's overall quality.

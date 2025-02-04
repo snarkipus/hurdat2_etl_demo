@@ -28,6 +28,36 @@ class LoadError(ETLError):
     pass
 
 
+class DatabaseError(ETLError):
+    """Base class for database-related errors"""
+
+    pass
+
+
+class DatabaseConnectionError(DatabaseError):
+    """Raised when database connection fails"""
+
+    pass
+
+
+class DatabaseInitializationError(DatabaseError):
+    """Raised when database initialization fails"""
+
+    pass
+
+
+class DatabaseInsertionError(DatabaseError):
+    """Raised when data insertion fails"""
+
+    pass
+
+
+class DatabaseValidationError(DatabaseError):
+    """Raised when database validation fails"""
+
+    pass
+
+
 class ValidationError(ETLError):
     """Raised when data validation fails"""
 

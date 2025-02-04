@@ -110,13 +110,18 @@ class TestPoint:
         """Test parsing valid HURDAT2 coordinate formats."""
         test_cases = [
             ("29.1N", 29.1),      # North latitude
+            ("29.1S", -29.1),     # South latitude
             ("90.2W", -90.2),     # West longitude
+            ("90.2E", 90.2),      # East longitude
             ("0.0N", 0.0),        # Zero latitude
             ("180.0E", 180.0),    # Max longitude
         ]
 
         for coord_str, expected in test_cases:
-            assert Point.parse_coordinate(coord_str) == expected
+            if "N" in coord_str or "S" in coord_str:
+                assert Point.parse_hurdat2(coord_str, is_latitude=True) == expected
+            else:
+                assert Point.parse_hurdat2(coord_str, is_latitude=False) == expected
 
     def test_invalid_coordinate_format(self):
         """Test invalid coordinate formats."""
@@ -128,18 +133,27 @@ class TestPoint:
             "",          # Empty string
         ]
         for coord in invalid_coords:
-            with pytest.raises(ValueError, match="Invalid format"):
-                Point.parse_coordinate(coord)
+            with pytest.raises(ValueError, match="Invalid HURDAT2 format"):
+                Point.parse_hurdat2(coord, is_latitude=True)
+            with pytest.raises(ValueError, match="Invalid HURDAT2 format"):
+                Point.parse_hurdat2(coord, is_latitude=False)
 
     def test_out_of_range_coordinates(self):
         """Test coordinates outside valid ranges."""
-        invalid_coords = [
-            ("91.0N", "Latitude 91.0 out of range"),
-            ("181.0E", "Longitude 181.0 out of range"),
-        ]
-        for coord, error_msg in invalid_coords:
-            with pytest.raises(ValueError, match=error_msg):
-                Point.parse_coordinate(coord)
+        # Test invalid latitude
+        with pytest.raises(ValueError, match="Latitude 91.0 out of range"):
+            Point(latitude="91.0N", longitude="90.0W")
+
+        # Test invalid longitude
+        with pytest.raises(ValueError, match="Longitude 181.0 out of range"):
+            Point(latitude="45.0N", longitude="181.0E")
+
+        # Test individual validators
+        with pytest.raises(ValueError, match="Latitude 91.0 out of range"):
+            Point.validate_latitude("91.0N")
+
+        with pytest.raises(ValueError, match="Longitude 181.0 out of range"):
+            Point.validate_longitude("181.0E")
 
     def test_point_construction(self):
         """Test Point construction with valid coordinates."""

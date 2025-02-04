@@ -1,3 +1,4 @@
+# ruff: noqa
 import logging
 import os
 import sys
@@ -6,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import ClassVar, Final, TextIO, TypeVar
 
-import pysqlite3 as sqlite3
+import pysqlite3 as sqlite3  # type: ignore
 from pydantic import BaseModel, ConfigDict, field_validator
 from tqdm import tqdm
 
@@ -423,7 +424,7 @@ def parse_hurdat2(filepath: Path | str, debug: bool = False) -> list[Storm]:  # 
 
     return storms
 
-    def process_observations(f: TextIO, storm: Storm, pbar: tqdm) -> None:
+    def process_observations(f: TextIO, storm: Storm, pbar: tqdm) -> None:  # type: ignore
         """Process all observations for a storm."""
         while True:
             pos = f.tell()

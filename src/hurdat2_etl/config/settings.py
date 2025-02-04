@@ -23,6 +23,11 @@ class Settings:
 
     # SQLite configuration
     SPATIALITE_LIBRARY_PATH: str = "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
+    DB_BATCH_SIZE: int = 100  # Number of records per batch insert
+    DB_CONNECTION_TIMEOUT: Final[float] = 5.0  # Seconds to wait for connection
+    DB_PRAGMA_SETTINGS: Final[dict[str, str]] = {
+        "foreign_keys": "'ON'",  # Enforce foreign key constraints
+    }
 
     # Logging configuration
     LOG_LEVEL: str = "INFO"

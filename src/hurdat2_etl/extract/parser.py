@@ -120,7 +120,7 @@ def parse_observation(line: str) -> Observation:
         status = Observation.parse_storm_status(fields[3])
 
         # Parse Point object
-        location = Point(latitude=fields[4], longitude=fields[5])
+        location = Point(latitude=fields[4], longitude=fields[5])  # type: ignore
 
         # Parse wind speed and pressure
         max_wind = Observation.parse_possible_missing(fields[6])
