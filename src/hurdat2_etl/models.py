@@ -6,15 +6,15 @@ from typing import ClassVar, Final
 
 from pydantic import BaseModel, Field, field_validator
 
-from hurdat2_etl.config import settings
-from hurdat2_etl.extract.types import StormStatus
+from .config import settings
+from .extract.types import StormStatus
 
 
 class Point(BaseModel):
     """Geographic point with latitude and longitude in WGS84 decimal degrees"""
 
     COORDINATE_PATTERN: ClassVar[re.Pattern[str]] = re.compile(
-        r"(\d+\.?\d*)\s*([NSEW])$"
+        r"(-?\d+\.?\d*)\s*([NSEW])$"
     )
 
     latitude: float = Field(description="Latitude in decimal degrees")
@@ -38,7 +38,12 @@ class Point(BaseModel):
 
     @classmethod
     def parse_hurdat2(cls, coord: str, is_latitude: bool) -> float:
-        """Convert HURDAT2 coordinate string to decimal degrees."""
+        """Convert HURDAT2 coordinate string to decimal degrees (WGS84 format).
+
+        HURDAT2 uses:
+        - Latitudes: 0-90° with N/S (positive for N, negative for S)
+        - Longitudes: 0-360° with E/W (positive for E, negative for W)
+        """
         match = cls.COORDINATE_PATTERN.match(coord.strip().upper())
         if not match:
             raise ValueError(f"Invalid HURDAT2 format: {coord}")
@@ -46,25 +51,29 @@ class Point(BaseModel):
         degrees = float(match.group(1))
         direction = match.group(2)
 
+        # Validate direction
         if is_latitude:
             if direction not in "NS":
                 raise ValueError(f"Latitude must use N/S direction, got: {direction}")
-            if not (
-                -settings.Settings.MAX_LATITUDE
-                <= degrees
-                <= settings.Settings.MAX_LATITUDE
-            ):
-                raise ValueError(f"Latitude {degrees} out of range [-90, 90]")
+        elif direction not in "EW":
+            raise ValueError(f"Longitude must use E/W direction, got: {direction}")
+
+        # For latitudes
+        if is_latitude:
+            if not 0 <= degrees <= settings.Settings.MAX_LATITUDE:
+                raise ValueError(f"Latitude {degrees} out of range [0, 90]")
             return -degrees if direction == "S" else degrees
-        else:
-            if direction not in "EW":
-                raise ValueError(f"Longitude must use E/W direction, got: {direction}")
-            if not (
-                (degrees >= -settings.Settings.MAX_LONGITUDE)
-                and (degrees <= settings.Settings.MAX_LONGITUDE)
-            ):
-                raise ValueError(f"Longitude {degrees} out of range [-180, 180]")
-            return -degrees if direction == "W" else degrees
+
+        # For longitudes:
+        if not 0 <= degrees <= settings.Settings.MAX_LONGITUDE:
+            raise ValueError(f"HURDAT2 longitude {degrees} out of range [0, 360]")
+
+        # Convert to WGS84
+        if direction == "W":
+            if degrees > 180:  # noqa: PLR2004
+                return degrees - 360  # For cases like 358.5W -> -1.5
+            return -degrees  # For cases like 90.2W -> -90.2
+        return degrees  # Eastern longitudes stay as-is
 
     def to_wkt(self) -> str:
         """Convert to Well-Known Text format."""

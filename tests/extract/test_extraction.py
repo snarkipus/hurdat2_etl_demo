@@ -115,6 +115,7 @@ class TestPoint:
             ("90.2E", 90.2),      # East longitude
             ("0.0N", 0.0),        # Zero latitude
             ("180.0E", 180.0),    # Max longitude
+            ("-0.0W", 0.0),       # Negative zero longitude
         ]
 
         for coord_str, expected in test_cases:
@@ -140,20 +141,26 @@ class TestPoint:
 
     def test_out_of_range_coordinates(self):
         """Test coordinates outside valid ranges."""
+        from pydantic_core import ValidationError
+
         # Test invalid latitude
-        with pytest.raises(ValueError, match="Latitude 91.0 out of range"):
+        with pytest.raises(ValidationError) as exc_info:
             Point(latitude="91.0N", longitude="90.0W")
+        assert "Latitude 91.0 out of range [0, 90]" in str(exc_info.value)
 
         # Test invalid longitude
-        with pytest.raises(ValueError, match="Longitude 181.0 out of range"):
-            Point(latitude="45.0N", longitude="181.0E")
+        with pytest.raises(ValidationError) as exc_info:
+            Point(latitude="45.0N", longitude="381.0E")
+        assert "HURDAT2 longitude 381.0 out of range [0, 360]" in str(exc_info.value)
 
-        # Test individual validators
-        with pytest.raises(ValueError, match="Latitude 91.0 out of range"):
-            Point.validate_latitude("91.0N")
+        # Test individual coordinate validation
+        with pytest.raises(ValidationError) as exc_info:
+            Point(latitude="91.0N", longitude="45.0W")
+        assert "Latitude 91.0 out of range [0, 90]" in str(exc_info.value)
 
-        with pytest.raises(ValueError, match="Longitude 181.0 out of range"):
-            Point.validate_longitude("181.0E")
+        with pytest.raises(ValidationError) as exc_info:
+            Point(latitude="45.0N", longitude="381.0E")
+        assert "HURDAT2 longitude 381.0 out of range [0, 360]" in str(exc_info.value)
 
     def test_point_construction(self):
         """Test Point construction with valid coordinates."""

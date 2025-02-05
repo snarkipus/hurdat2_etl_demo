@@ -5,8 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final
 
-from hurdat2_etl.exceptions import ExtractionError
-from hurdat2_etl.models import Observation, Point, Storm
+from ..exceptions import ExtractionError
+from ..models import Observation, Point, Storm
 
 HEADER_FIELDS_CNT: Final = 3
 CYCLONE_ID_LENGTH: Final = 8

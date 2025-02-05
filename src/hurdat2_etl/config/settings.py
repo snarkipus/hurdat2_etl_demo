@@ -36,4 +36,4 @@ class Settings:
     # Validation
     MISSING_VALUES: Final[set[int]] = {-999, -99}
     MAX_LATITUDE: Final[float] = 90.0
-    MAX_LONGITUDE: Final[float] = 180.0
+    MAX_LONGITUDE: Final[float] = 360.0

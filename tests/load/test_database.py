@@ -14,12 +14,7 @@ from hurdat2_etl.exceptions import (
     DatabaseValidationError,
 )
 from hurdat2_etl.extract.types import StormStatus
-from hurdat2_etl.load.load import (
-    DatabaseManager,
-    init_spatialite_db,
-    insert_observations,
-    validate_database,
-)
+from hurdat2_etl.load.load import DatabaseManager, Load
 from hurdat2_etl.models import Observation, Point, Storm
 
 
@@ -93,7 +88,8 @@ def sample_storm():
 
 def test_database_manager_basic(temp_db):
     """Test basic DatabaseManager functionality."""
-    init_spatialite_db(temp_db)
+    load = Load(db_path=temp_db)
+    load.init_database()
     manager = DatabaseManager(temp_db)
     conn = manager.get_connection()
 
@@ -112,9 +108,10 @@ def test_database_manager_basic(temp_db):
     manager.close_all()
 
 
-def test_init_spatialite_db(temp_db):
+def test_init_database(temp_db):
     """Test database initialization with enhanced schema."""
-    init_spatialite_db(temp_db)
+    load = Load(db_path=temp_db)
+    load.init_database()
 
     # Verify database was created
     assert os.path.exists(temp_db)
@@ -160,12 +157,13 @@ def test_init_spatialite_db(temp_db):
     manager.close_all()
 
 
-def test_insert_observations_with_batch_size(temp_db, sample_storm):
+def test_insert_storms_with_batch_size(temp_db, sample_storm):
     """Test inserting observations with custom batch size."""
-    init_spatialite_db(temp_db)
+    load = Load(db_path=temp_db, batch_size=1)
+    load.init_database()
 
     # Test with small batch size
-    insert_observations(temp_db, [sample_storm], batch_size=1)
+    load.insert_storms([sample_storm])
 
     manager = DatabaseManager(temp_db)
     conn = manager.get_connection()
@@ -181,10 +179,11 @@ def test_insert_observations_with_batch_size(temp_db, sample_storm):
 
 def test_validate_database_enhanced(temp_db, sample_storm):
     """Test enhanced database validation features."""
-    init_spatialite_db(temp_db)
-    insert_observations(temp_db, [sample_storm])
+    load = Load(db_path=temp_db)
+    load.init_database()
+    load.insert_storms([sample_storm])
 
-    validation_results = validate_database(temp_db)
+    validation_results = load.validate_database()
 
     # Check enhanced basin stats
     basin_stats = validation_results["basin_stats"]
@@ -224,47 +223,51 @@ def test_validate_database_enhanced(temp_db, sample_storm):
 def test_error_handling(temp_db, sample_storm):
     """Test specific error handling cases."""
     # Test database initialization error
+    load = Load(db_path="/invalid/path/db.sqlite")
     with pytest.raises(DatabaseInitializationError):
-        init_spatialite_db("/invalid/path/db.sqlite")
+        load.init_database()
 
     # Test invalid storm data
-    init_spatialite_db(temp_db)
+    load = Load(db_path=temp_db)
+    load.init_database()
 
     # Modify sample storm to have invalid basin
     invalid_storm = sample_storm
     invalid_storm.basin = "XX"  # This will pass Pydantic but fail DB constraint
 
     with pytest.raises(DatabaseInsertionError, match="CHECK constraint failed: valid_basin"):
-        insert_observations(temp_db, [invalid_storm])
+        load.insert_storms([invalid_storm])
 
     # Test validation error
     os.remove(temp_db)  # Remove database file
     with pytest.raises(DatabaseValidationError):
-        validate_database(temp_db)
+        load.validate_database()
 
 
 def test_input_validation(temp_db, sample_storm):
     """Test input validation and sanitization."""
-    init_spatialite_db(temp_db)
+    load = Load(db_path=temp_db)
+    load.init_database()
 
     # Test empty storm list
     with pytest.raises(ValueError, match="No storm data provided for insertion"):
-        insert_observations(temp_db, [])
+        load.insert_storms([])
 
     # Test invalid batch size
     with pytest.raises(ValueError, match="Batch size must be positive"):
-        insert_observations(temp_db, [sample_storm], batch_size=0)
+        Load(db_path=temp_db, batch_size=0)
 
     # Test invalid coordinates
     invalid_obs = sample_storm.observations[0]
     invalid_obs.location = Point(latitude=91.0, longitude=0.0)  # Invalid latitude
     with pytest.raises(DatabaseInsertionError, match="Latitude out of range"):
-        insert_observations(temp_db, [sample_storm])
+        load.insert_storms([sample_storm])
 
 
 def test_missing_values(temp_db, sample_storm):
     """Test handling of missing values."""
-    init_spatialite_db(temp_db)
+    load = Load(db_path=temp_db)
+    load.init_database()
 
     # Test various missing value scenarios
     sample_storm.observations[0].max_wind = -999  # Missing value
@@ -273,7 +276,7 @@ def test_missing_values(temp_db, sample_storm):
     sample_storm.observations[1].min_pressure = None  # NULL value
 
     # Should not raise any exceptions
-    insert_observations(temp_db, [sample_storm])
+    load.insert_storms([sample_storm])
 
     manager = DatabaseManager(temp_db)
     conn = manager.get_connection()
