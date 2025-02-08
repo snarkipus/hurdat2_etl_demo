@@ -25,8 +25,13 @@ class Settings:
     SPATIALITE_LIBRARY_PATH: str = "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
     DB_BATCH_SIZE: int = 100  # Number of records per batch insert
     DB_CONNECTION_TIMEOUT: Final[float] = 5.0  # Seconds to wait for connection
-    DB_PRAGMA_SETTINGS: Final[dict[str, str]] = {
-        "foreign_keys": "'ON'",  # Enforce foreign key constraints
+    # Connection pool and database engine settings
+    DB_POOL_SIZE: int = 5
+    DB_PRAGMA_SETTINGS: Final[dict[str, int | str]] = {
+        "foreign_keys": 1,  # Enforce foreign key constraints
+        "journal_mode": "WAL",  # Write-Ahead Logging
+        "synchronous": "NORMAL",  # Balanced durability/performance
+        "cache_size": -2000,  # 2MB cache
     }
 
     # Logging configuration

@@ -45,7 +45,7 @@ class ETLStage(Generic[T, U], ABC):
 
         if self.progress_enabled:
             try:
-                self._progress_bar = tqdm(total=total, desc=desc)  # type: ignore
+                self._progress_bar = tqdm(total=total, desc=desc)
             except Exception as e:
                 raise ProgressError(f"Failed to initialize progress bar: {e!s}") from e
 

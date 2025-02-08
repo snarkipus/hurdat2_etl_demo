@@ -7,9 +7,8 @@ This module handles data operations including:
 """
 
 import logging
-from typing import cast
 
-import pysqlite3 as sqlite3  # type: ignore
+from apsw import Cursor
 from tqdm.auto import tqdm
 
 from ..exceptions import DatabaseInsertionError
@@ -53,13 +52,13 @@ class DatabaseOperations:
             try:
                 cur.execute("BEGIN TRANSACTION")
                 self._process_storms(cur, storms, batch_size)
-                conn.commit()
+                conn.cursor().execute("COMMIT")
                 logging.info(
                     f"Successfully inserted {len(storms)} storms into database"
                 )
 
             except Exception as e:
-                conn.rollback()
+                conn.cursor().execute("ROLLBACK")
                 raise DatabaseInsertionError(f"Database insertion failed: {e!s}") from e
             finally:
                 self.manager.return_connection(conn)
@@ -69,7 +68,7 @@ class DatabaseOperations:
             raise DatabaseInsertionError(f"Database operation failed: {e!s}") from e
 
     def _process_storms(
-        self, cur: sqlite3.Cursor, storms: list[Storm], batch_size: int
+        self, cur: Cursor, storms: list[Storm], batch_size: int
     ) -> None:
         """Process storms in batches.
 
@@ -91,7 +90,7 @@ class DatabaseOperations:
                     f"Failed to process storm {storm.name}: {e!s}"
                 ) from e
 
-    def _insert_storm(self, cur: sqlite3.Cursor, storm: Storm) -> int:
+    def _insert_storm(self, cur: Cursor, storm: Storm) -> int:
         """Insert a single storm record.
 
         Args:
@@ -118,16 +117,16 @@ class DatabaseOperations:
             )
 
             # Handle the Optional[int] type of lastrowid
-            lastrowid = cur.lastrowid
+            lastrowid = cur.connection.last_insert_rowid()
             if lastrowid is None:
                 raise DatabaseInsertionError("Failed to get inserted storm ID")
-            return cast(int, lastrowid)  # Safe cast since we checked for None
+            return lastrowid
 
         except Exception as e:
             raise DatabaseInsertionError(f"Failed to insert storm record: {e!s}") from e
 
     def _process_observations(
-        self, cur: sqlite3.Cursor, storm_id: int, storm: Storm, batch_size: int
+        self, cur: Cursor, storm_id: int, storm: Storm, batch_size: int
     ) -> None:
         """Process storm observations in batches.
 

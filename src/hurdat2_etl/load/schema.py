@@ -51,10 +51,10 @@ class SchemaManager:
                 self._add_spatial_support(conn)
                 self._create_validation_triggers(conn)
                 self._create_indices(conn)
-                conn.commit()
+                conn.cursor().execute("COMMIT")
                 logging.info("Database initialized successfully with enhanced schema")
             except Exception as e:
-                conn.rollback()
+                conn.cursor().execute("ROLLBACK")
                 raise DatabaseInitializationError(
                     f"Failed to initialize database schema: {e}"
                 ) from e

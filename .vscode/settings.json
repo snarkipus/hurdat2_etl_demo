@@ -1,10 +1,10 @@
 {
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-        "source.fixAll.ruff": "explicit",
+        // "source.fixAll.ruff": "explicit",
         "source.organizeImports.ruff": "explicit"
     },
-    "ruff.format.args": ["--config=pyproject.toml"],
+    "ruff.configuration": "pyproject.toml",
     "python.linting.enabled": true,
     "python.linting.lintOnSave": true,
     "python.formatting.provider": "ruff",
@@ -16,7 +16,7 @@
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            "source.fixAll": "explicit",
+            // "source.fixAll": "explicit",
             "source.organizeImports": "explicit"
         }
     },

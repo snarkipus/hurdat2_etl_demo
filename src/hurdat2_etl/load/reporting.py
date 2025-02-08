@@ -10,7 +10,7 @@ This module handles database validation and reporting including:
 import logging
 from typing import Any, cast
 
-import pysqlite3 as sqlite3  # type: ignore
+from apsw import Cursor
 
 from ..config.settings import Settings
 from ..exceptions import DatabaseValidationError
@@ -68,7 +68,7 @@ class DatabaseReporter:
         except Exception as e:
             raise DatabaseValidationError(f"Database validation failed: {e!s}") from e
 
-    def _validate_schema(self, cur: sqlite3.Cursor) -> list[tuple[str, str, str]]:
+    def _validate_schema(self, cur: Cursor) -> list[tuple[str, str, str]]:
         """Validate database schema.
 
         Args:
@@ -96,7 +96,7 @@ class DatabaseReporter:
             raise DatabaseValidationError(f"Schema validation failed: {e!s}") from e
 
     def _analyze_basin_coverage(
-        self, cur: sqlite3.Cursor
+        self, cur: Cursor
     ) -> list[tuple[str, int, int, int, int, float]]:
         """Analyze basin coverage statistics.
 
@@ -130,7 +130,17 @@ class DatabaseReporter:
             )
             results = cur.fetchall()
             return [
-                cast(BasinRow, (str(b), int(c), int(s), int(e), int(y), float(a)))
+                cast(
+                    BasinRow,
+                    (
+                        str(b or ""),
+                        int(c or 0),
+                        int(s or 0),
+                        int(e or 0),
+                        int(y or 0),
+                        float(a or 0.0),
+                    ),
+                )
                 for b, c, s, e, y, a in results
             ]
         except Exception as e:
@@ -139,7 +149,7 @@ class DatabaseReporter:
             ) from e
 
     def _analyze_intensity_distribution(
-        self, cur: sqlite3.Cursor
+        self, cur: Cursor
     ) -> list[tuple[str, int, int, float, int, str, str]]:
         """Analyze storm intensity distribution.
 
@@ -199,7 +209,18 @@ class DatabaseReporter:
                         str(late),
                     ),
                 )
-                for cat, cnt, minp, avgp, maxw, early, late in results
+                for cat, cnt, minp, avgp, maxw, early, late in [
+                    (
+                        cat or "",
+                        cnt or 0,
+                        minp or 0,
+                        avgp or 0.0,
+                        maxw or 0,
+                        early or "",
+                        late or "",
+                    )
+                    for cat, cnt, minp, avgp, maxw, early, late in results
+                ]
             ]
         except Exception as e:
             raise DatabaseValidationError(
@@ -207,7 +228,7 @@ class DatabaseReporter:
             ) from e
 
     def _analyze_spatial_coverage(
-        self, cur: sqlite3.Cursor
+        self, cur: Cursor
     ) -> tuple[float, float, float, float, int, int, int]:
         """Analyze spatial coverage of observations.
 

@@ -16,76 +16,20 @@ from collections.abc import Iterator
 from os import PathLike
 from typing import Any, Union
 
-import pysqlite3 as sqlite3  # type: ignore
+import apsw
 
 from ..config.settings import Settings
 from ..core import ETLStage
 from ..exceptions import (
-    DatabaseConnectionError,
     DatabaseInitializationError,
     DatabaseInsertionError,
     DatabaseValidationError,
 )
 from ..models import Storm
+from .connection import DatabaseManager
 
 # Type alias for path arguments
 PathType = Union[str, "PathLike[str]"]
-
-
-class DatabaseManager:
-    """Manages database connections and operations."""
-
-    def __init__(self, db_path: PathType):
-        """Initialize the database manager.
-
-        Args:
-            db_path: Path to the SQLite database file
-
-        Raises:
-            DatabaseConnectionError: If connection setup fails
-        """
-        self.db_path = db_path
-        self.conn = self._create_connection()
-
-    def _create_connection(self) -> sqlite3.Connection:
-        """Create a new database connection with basic settings.
-
-        Returns:
-            sqlite3.Connection: Configured database connection
-
-        Raises:
-            DatabaseConnectionError: If connection creation fails
-        """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.enable_load_extension(True)
-            conn.load_extension(Settings.SPATIALITE_LIBRARY_PATH)
-
-            # Apply basic pragma settings
-            for pragma, value in Settings.DB_PRAGMA_SETTINGS.items():
-                conn.execute(f"PRAGMA {pragma}={value}")
-
-            return conn
-        except Exception as e:
-            raise DatabaseConnectionError(
-                f"Failed to create database connection: {e}"
-            ) from e
-
-    def get_connection(self) -> sqlite3.Connection:
-        """Get the database connection.
-
-        Returns:
-            sqlite3.Connection: Database connection
-        """
-        return self.conn
-
-    def return_connection(self, conn: sqlite3.Connection) -> None:
-        """No-op since we're using a single connection."""
-        pass
-
-    def close_all(self) -> None:
-        """Close the database connection."""
-        self.conn.close()
 
 
 class Load(ETLStage[Iterator[Storm], None]):
@@ -128,10 +72,12 @@ class Load(ETLStage[Iterator[Storm], None]):
             conn = manager.get_connection()
 
             try:
-                conn.execute("SELECT InitSpatialMetadata(1);")
+                cursor = conn.cursor()
+                cursor.execute("SELECT InitSpatialMetadata(1);")
 
                 # Create base tables with detailed schema
-                conn.executescript(
+                cursor = conn.cursor()
+                cursor.execute(
                     """
                     DROP TABLE IF EXISTS observations;
                     DROP TABLE IF EXISTS storms;
@@ -182,7 +128,8 @@ class Load(ETLStage[Iterator[Storm], None]):
 
                 # Add spatial support with validation
                 conn.execute(
-                    "SELECT AddGeometryColumn('observations', 'geom', 4326, 'POINT', 'XY');"
+                    "SELECT AddGeometryColumn('observations', 'geom', 4326, 'POINT', "
+                    "'XY');"
                 )
                 conn.execute(
                     """
@@ -217,7 +164,8 @@ class Load(ETLStage[Iterator[Storm], None]):
                                 'TD', 'TS', 'HU', 'EX', 'SD', 'SS', 'LO', 'WV', 'DB'
                             ) THEN
                                 RAISE(ROLLBACK, 'Invalid storm status')
-                            WHEN NEW.max_wind < 0 AND NEW.max_wind NOT IN (-999, -99) THEN
+                            WHEN NEW.max_wind < 0
+                                AND NEW.max_wind NOT IN (-999, -99) THEN
                                 RAISE(ROLLBACK, 'Invalid max wind value')
                             WHEN NEW.min_pressure < 0
                                 AND NEW.min_pressure NOT IN (-999, -99) THEN
@@ -228,13 +176,16 @@ class Load(ETLStage[Iterator[Storm], None]):
                 )
 
                 conn.execute("SELECT CreateSpatialIndex('observations', 'geom');")
-                conn.commit()
+                cur = conn.cursor()
+                # No explicit commit needed - handled by transaction manager
                 logging.info(
-                    "Database initialized successfully with enhanced schema and validation"
+                    "Database initialized successfully with enhanced schema "
+                    "and validation"
                 )
 
             except Exception as e:
-                conn.rollback()
+                cur = conn.cursor()
+                cur.execute("ROLLBACK")
                 raise DatabaseInitializationError(
                     f"Failed to initialize database schema: {e}"
                 ) from e
@@ -258,7 +209,7 @@ class Load(ETLStage[Iterator[Storm], None]):
             cur = conn.cursor()
 
             try:
-                cur.execute("BEGIN TRANSACTION")
+                # APSW automatically starts transactions on first execute()
 
                 self.init_progress(len(storms), "Loading storms")
 
@@ -279,7 +230,7 @@ class Load(ETLStage[Iterator[Storm], None]):
                             (storm.basin, storm.cyclone_number, storm.year, storm.name),
                         )
 
-                        storm_id = cur.lastrowid
+                        storm_id = cur.getconnection().last_insert_rowid()
 
                         # Process observations in batches
                         for i in range(0, len(storm.observations), self.batch_size):
@@ -342,13 +293,17 @@ class Load(ETLStage[Iterator[Storm], None]):
                             f"Failed to process storm {storm.name}: {e!s}"
                         ) from e
 
-                conn.commit()
+                # APSW auto-commits when leaving transaction scope
                 logging.info(
                     f"Successfully inserted {len(storms)} storms into database"
                 )
 
             except Exception as e:
-                conn.rollback()
+                try:
+                    conn.execute("ROLLBACK")
+                except apsw.SQLError as rollback_error:
+                    if "no transaction is active" not in str(rollback_error):
+                        raise rollback_error  # Only ignore the specific "no transaction" error
                 raise DatabaseInsertionError(f"Database insertion failed: {e!s}") from e
             finally:
                 self.close_progress()
@@ -470,7 +425,11 @@ class Load(ETLStage[Iterator[Storm], None]):
                     FROM normalized_bounds
                 """
                 )
-                validation_results["spatial_stats"] = cur.fetchone()
+                spatial_stats = cur.fetchone()
+                if spatial_stats:
+                    validation_results["spatial_stats"] = spatial_stats
+                else:
+                    validation_results["spatial_stats"] = []
 
                 return validation_results
 

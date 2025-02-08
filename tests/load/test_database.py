@@ -5,10 +5,11 @@ from datetime import datetime
 from tempfile import NamedTemporaryFile
 
 import pytest
-from pysqlite3 import dbapi2 as sqlite3  # type: ignore
+import apsw
 
 from hurdat2_etl.config.settings import Settings
 from hurdat2_etl.exceptions import (
+    DatabaseConnectionError,
     DatabaseInitializationError,
     DatabaseInsertionError,
     DatabaseValidationError,
@@ -94,7 +95,7 @@ def test_database_manager_basic(temp_db):
     conn = manager.get_connection()
 
     # Test basic connection works
-    assert isinstance(conn, sqlite3.Connection)
+    assert isinstance(conn, apsw.Connection)
 
     # Test PRAGMA settings
     cur = conn.cursor()
@@ -102,11 +103,130 @@ def test_database_manager_basic(temp_db):
         cur.execute(f"PRAGMA {pragma}")
         value = cur.fetchone()[0]
         # Strip quotes from expected value for comparison
-        expected = expected_value.strip("'")
-        assert str(value) == "1" if expected.upper() == "ON" else str(value).upper() == expected.upper()
+        # Handle different PRAGMA value types
+        # Handle PRAGMA value type conversions
+        if pragma == "synchronous":
+            # SQLite returns integers for synchronous mode: 0=OFF, 1=NORMAL, 2=FULL
+            # Convert both to numeric values for comparison
+            sync_map = {
+                "OFF": 0, "0": 0,
+                "NORMAL": 1, "1": 1,
+                "FULL": 2, "2": 2
+            }
+            value = str(value)
+            expected = str(expected_value).strip("'").upper()
+
+            # Convert both to numeric values
+            value = sync_map.get(value, value)
+            expected = sync_map.get(expected, expected)
+        elif isinstance(expected_value, bool):
+            expected = int(expected_value)
+        elif isinstance(expected_value, str):
+            expected = expected_value.strip("'").upper()
+            value = str(value).upper()
+        else:
+            expected = expected_value
+
+        assert str(value) == str(expected), f"PRAGMA {pragma} mismatch (Expected: {expected}, Got: {value})"
 
     manager.close_all()
 
+
+def test_connection_pool_initialization(temp_db):
+    """Test connection pool initialization and basic functionality"""
+    manager = DatabaseManager(temp_db)
+
+    # Verify pool size matches settings
+    assert manager.connection_pool.qsize() == Settings.DB_POOL_SIZE
+
+    # Verify all connections are valid APSW connections
+    assert all(isinstance(conn, apsw.Connection) for conn in list(manager.connection_pool.queue))
+
+    # Verify connections have Spatialite loaded
+    conn = manager.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT spatialite_version()")
+    assert cursor.fetchone()[0] is not None
+    manager.return_connection(conn)
+
+    manager.close_all()
+
+def test_connection_failure_invalid_path():
+    """Test DatabaseConnectionError when initializing with invalid path"""
+    with pytest.raises(DatabaseConnectionError):
+        DatabaseManager("/invalid/path/nonexistent.db")
+
+def test_connection_retrieval_timeout(temp_db):
+    """Test connection retrieval timeout when pool is exhausted"""
+    manager = DatabaseManager(temp_db)
+
+    # Exhaust the pool
+    connections = [manager.get_connection() for _ in range(Settings.DB_POOL_SIZE)]
+
+    with pytest.raises(DatabaseConnectionError) as excinfo:
+        manager.get_connection()
+
+    assert "timeout" in str(excinfo.value).lower() or "pool exhausted" in str(excinfo.value).lower()
+
+    # Cleanup
+    for conn in connections:
+        manager.return_connection(conn)
+    manager.close_all()
+
+def test_pragma_settings_application(temp_db):
+    """Verify all PRAGMA settings are applied to connections"""
+    manager = DatabaseManager(temp_db)
+    conn = manager.get_connection()
+    cursor = conn.cursor()
+
+    for pragma, expected_value in Settings.DB_PRAGMA_SETTINGS.items():
+        cursor.execute(f"PRAGMA {pragma}")
+        result = cursor.fetchone()[0]
+        # Handle boolean PRAGMA values
+        if isinstance(expected_value, bool):
+            expected = int(expected_value)
+        else:
+            expected = expected_value.strip("'") if isinstance(expected_value, str) else expected_value
+
+        # Handle special PRAGMA value conversions
+        if pragma == "synchronous":
+            # Convert both to numeric values for comparison
+            sync_map = {
+                "OFF": 0, "0": 0,
+                "NORMAL": 1, "1": 1,
+                "FULL": 2, "2": 2
+            }
+            result = str(result)
+            expected = str(expected_value).strip("'").upper()
+
+            # Convert both to numeric values
+            result = sync_map.get(result, result)
+            expected = sync_map.get(expected, expected)
+        elif isinstance(expected_value, str):
+            result = str(result).upper()
+            expected = str(expected).upper()
+        else:
+            result = str(result)
+            expected = str(expected)
+        assert result == expected, f"PRAGMA {pragma} mismatch (Expected: {expected}, Got: {result})"
+
+    manager.return_connection(conn)
+    manager.close_all()
+
+def test_connection_close_all(temp_db):
+    """Test that close_all() properly closes all connections"""
+    manager = DatabaseManager(temp_db)
+    connections = [manager.get_connection() for _ in range(Settings.DB_POOL_SIZE)]
+
+    for conn in connections:
+        manager.return_connection(conn)
+
+    manager.close_all()
+
+    # Verify connections are closed
+    for conn in connections:
+        with pytest.raises(apsw.ConnectionClosedError):
+            conn.cursor().execute("SELECT 1")
 
 def test_init_database(temp_db):
     """Test database initialization with enhanced schema."""
@@ -260,7 +380,7 @@ def test_input_validation(temp_db, sample_storm):
     # Test invalid coordinates
     invalid_obs = sample_storm.observations[0]
     invalid_obs.location = Point(latitude=91.0, longitude=0.0)  # Invalid latitude
-    with pytest.raises(DatabaseInsertionError, match="Latitude out of range"):
+    with pytest.raises(DatabaseInsertionError, match=r"(Latitude out of range|Failed to process storm.*Latitude out of range)"):
         load.insert_storms([sample_storm])
 
 
