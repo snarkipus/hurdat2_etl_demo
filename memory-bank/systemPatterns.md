@@ -59,6 +59,38 @@ class APSWTypeAdapter:
             )
 ```
 
+### Testing Patterns (Verified Approaches)
+```python
+# Pattern: Database Test Fixtures
+@pytest.fixture
+def test_db():
+    """Temporary database with schema initialization"""
+    with NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+
+    schema = SchemaManager(db_path)
+    schema.initialize_database()
+
+    yield db_path
+
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+# Pattern: Transaction Rollback Testing
+def test_transaction_rollback(test_db):
+    """Verify transaction rollback behavior"""
+    ops = DatabaseOperations(test_db)
+    with pytest.raises(Exception):
+        with ops.transaction() as cur:
+            cur.execute("INSERT INTO storms VALUES (?, ?, ?, ?)",
+                       [1, "AL", 1, 2023])
+            raise Exception("Forced rollback")
+
+    # Verify no data was committed
+    conn = ops.get_connection()
+    assert conn.execute("SELECT COUNT(*) FROM storms").fetchone()[0] == 0
+```
+
 ### Migration Validation Steps
 1. **Connection Testing**
    - Verify dict row format in test_database.py

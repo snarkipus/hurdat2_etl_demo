@@ -1,3 +1,28 @@
+[tool.poetry]
+name = "reference"
+version = "0.1.0"
+description = "ETL pipeline for HURDAT2 data"
+authors = ["matt@jacksonsix.com"]
+readme = "README.md"
+packages = [{include = "hurdat2_etl", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">3.11, <3.12"
+pydantic = "^2.6.1"
+tqdm = "^4.66.1"
+apsw = "^3.49.0.0"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.0"
+pytest = "^8.3.4"
+pytest-cov = "^6.0.0"
+packaging = "^24.2"
+ruff = "^0.9.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
 [tool.ruff]
 line-length = 88
 target-version = "py311"
@@ -65,28 +90,3 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "pass"
 ]
-
-[tool.poetry]
-name = "reference"
-version = "0.1.0"
-description = "ETL pipeline for HURDAT2 data"
-authors = ["matt@jacksonsix.com"]
-readme = "README.md"
-packages = [{include = "src"}]
-
-[tool.poetry.dependencies]
-python = ">3.11, <3.12"
-pydantic = "^2.6.1"
-tqdm = "^4.66.1"
-pysqlite3-binary = "^0.5.2"
-
-[tool.poetry.group.dev.dependencies]
-mypy = "^1.0"
-pytest = "^8.3.4"
-pytest-cov = "^6.0.0"
-packaging = "^24.2"
-ruff = "^0.9.4"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

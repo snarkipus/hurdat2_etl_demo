@@ -164,7 +164,7 @@ class Storm(BaseModel):
     @property
     def storm_id(self) -> str:
         """Generate storm ID from components."""
-        return f"{self.basin}{self.cyclone_number}{self.year}"
+        return f"{self.basin}{self.cyclone_number:02d}{self.year}"
 
     @property
     def observation_count(self) -> int:

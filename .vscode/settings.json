@@ -1,28 +1,27 @@
 {
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-        // "source.fixAll.ruff": "explicit",
-        "source.organizeImports.ruff": "explicit"
+        "source.fixAll.ruff": "explicit",
+        "source.organizeImports": "explicit"
     },
     "ruff.configuration": "pyproject.toml",
-    "python.linting.enabled": true,
-    "python.linting.lintOnSave": true,
-    "python.formatting.provider": "ruff",
     "editor.rulers": [88],
-    "python.linting.mypyEnabled": true,
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
     "[python]": {
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            // "source.fixAll": "explicit",
+            "source.fixAll.ruff": "explicit",
             "source.organizeImports": "explicit"
         }
     },
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.diagnosticMode": "workspace",
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "python.testing.pytestArgs": [
-        "tests"
-    ]
+    "python.testing.pytestPath": "pytest",
+    "python.testing.cwd": "${workspaceFolder}",
+    "python.testing.pytestArgs": ["tests"],
+    "mypy.enabled": true
 }

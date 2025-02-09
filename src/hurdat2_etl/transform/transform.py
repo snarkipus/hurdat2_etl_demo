@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def transform_data(storm: Storm) -> Storm:
-    """Perform basic data transformation.
+    """Perform data transformation and log observations outside the Atlantic basin.
 
     Args:
         storm: Storm object to transform.
@@ -19,7 +19,27 @@ def transform_data(storm: Storm) -> Storm:
     Returns:
         Transformed Storm object.
     """
-    # Currently a stub - to be expanded with actual transformation logic
+    # NOAA Tracks Storms even after they leave the Atlantic basin
+    atlantic_bounds = {
+        "west": -140.0,  # Pacific (cross-over storms)
+        "east": 65.0,  # Norway
+        "south": 0.0,  # Equator
+        "north": 85.0,  # Arctic Sea
+    }
+
+    # Log observations outside the Atlantic basin
+    for obs in storm.observations:
+        if not (
+            atlantic_bounds["west"] <= obs.location.longitude <= atlantic_bounds["east"]
+            and atlantic_bounds["south"]
+            <= obs.location.latitude
+            <= atlantic_bounds["north"]
+        ):
+            logger.info(
+                f"Observation at ({obs.location.latitude}, {obs.location.longitude}) "
+                f"of storm {storm.storm_id} is outside the Atlantic basin."
+            )
+
     return storm
 
 
