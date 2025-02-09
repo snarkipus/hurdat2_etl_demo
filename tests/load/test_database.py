@@ -384,6 +384,26 @@ def test_input_validation(temp_db, sample_storm):
         load.insert_storms([sample_storm])
 
 
+def test_bulk_insert_rollback_on_error(temp_db, sample_storm):
+    """Test transaction rollback on bulk insert failure"""
+    load = Load(db_path=temp_db)
+    load.init_database()
+
+    # Create invalid data that will fail database constraints
+    invalid_storm = sample_storm
+    invalid_storm.basin = "XX"  # Violates valid_basin CHECK constraint
+
+    with pytest.raises(DatabaseInsertionError):
+        load.insert_storms([invalid_storm])
+
+    # Verify no data was persisted
+    manager = DatabaseManager(temp_db)
+    conn = manager.get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM storms")
+    assert cur.fetchone()[0] == 0
+    manager.close_all()
+
 def test_missing_values(temp_db, sample_storm):
     """Test handling of missing values."""
     load = Load(db_path=temp_db)

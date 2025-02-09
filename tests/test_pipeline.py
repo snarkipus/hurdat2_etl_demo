@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
@@ -14,6 +15,7 @@ from hurdat2_etl.main import parse_args, run_etl
 from hurdat2_etl.models import Storm
 from hurdat2_etl.transform.transform import Transform
 
+TEST_DATA_DIR = Path(__file__).parent / "data" / "hurdat2"
 
 class MockStage(ETLStage[str, str]):
     """Mock ETL stage for testing progress tracking."""
@@ -149,11 +151,12 @@ def test_pipeline_integration(tmp_path, caplog):
     caplog.set_level(logging.INFO)
 
     # Create test data file
-    test_file = tmp_path / "test.txt"
-    test_file.write_text(
-        "AL122007,              KAREN,     1,\n"
-        "20070925, 0000,  , TD, 10.0N,  35.9W,  30, 1006,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, -999\n"
-    )
+    # test_file = tmp_path / "test.txt"
+    test_file = TEST_DATA_DIR / "test_data.txt"
+    # test_file.write_text(
+    #     "AL122007,              KAREN,     1,\n"
+    #     "20070925, 0000,  , TD, 10.0N,  35.9W,  30, 1006,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, -999\n"
+    # )
 
     # Setup command line arguments
     with patch("sys.argv", ["prog", "--input", str(test_file), "--db", str(tmp_path / "test.db")]):
@@ -162,6 +165,20 @@ def test_pipeline_integration(tmp_path, caplog):
 
     # Verify pipeline execution
     assert "ETL pipeline completed successfully" in caplog.text
+
+    # Generate and verify database integrity report
+    from hurdat2_etl.load.reporting import DatabaseReporter
+
+    db_path = tmp_path / "test.db"
+    reporter = DatabaseReporter(db_path)
+    validation_results = reporter.validate_database()
+    reporter.generate_report(validation_results)
+
+    # Add assertions to check the report (example)
+    assert "Schema Overview:" in caplog.text
+    assert "Basin Coverage:" in caplog.text
+    assert "Intensity Distribution:" in caplog.text
+    assert "Spatial Coverage:" in caplog.text
 
 
 def test_progress_disabled(tmp_path):
@@ -194,3 +211,19 @@ def test_command_line_progress_control(tmp_path):
         with patch("sys.argv", argv):
             args = parse_args()
             assert not args.no_progress == expected_enabled
+
+
+def test_pipeline_integration_real_data(tmp_path, caplog):
+    """Test full pipeline integration with real data."""
+    caplog.set_level(logging.INFO)
+
+    # Use the real data file
+    test_file = "ref/hurdat2-1851-2023-051124.txt"
+
+    # Setup command line arguments
+    with patch("sys.argv", ["prog", "--input", test_file, "--db", str(tmp_path / "test.db")]):
+        args = parse_args()
+        run_etl(args)
+
+    # Verify pipeline execution
+    assert "ETL pipeline completed successfully" in caplog.text

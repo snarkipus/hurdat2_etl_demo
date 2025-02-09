@@ -151,18 +151,7 @@ class DatabaseReporter:
     def _analyze_intensity_distribution(
         self, cur: Cursor
     ) -> list[tuple[str, int, int, float, int, str, str]]:
-        """Analyze storm intensity distribution.
-
-        Args:
-            cur: Database cursor
-
-        Returns:
-            List of tuples containing intensity statistics:
-            (category, count, min_pressure, avg_pressure, max_wind, earliest, latest)
-
-        Raises:
-            DatabaseValidationError: If analysis fails
-        """
+        """Analyze storm intensity distribution."""
         try:
             cur.execute(
                 """
@@ -178,10 +167,10 @@ class DatabaseReporter:
                         max_wind,
                         date
                     FROM observations
-                )
-                WHERE max_wind NOT IN ("""
+                    WHERE max_wind NOT IN ("""
                 + ", ".join(str(v) for v in Settings.MISSING_VALUES)
                 + """)
+                )
                 SELECT
                     category,
                     COUNT(*) as count,

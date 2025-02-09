@@ -303,7 +303,8 @@ class Load(ETLStage[Iterator[Storm], None]):
                     conn.execute("ROLLBACK")
                 except apsw.SQLError as rollback_error:
                     if "no transaction is active" not in str(rollback_error):
-                        raise rollback_error  # Only ignore the specific "no transaction" error
+                        # Only ignore the specific "no transaction" error
+                        raise rollback_error
                 raise DatabaseInsertionError(f"Database insertion failed: {e!s}") from e
             finally:
                 self.close_progress()
