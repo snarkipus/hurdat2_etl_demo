@@ -379,7 +379,40 @@ class MeasurementWithUnits(NamedTuple):
 
 
 
-## 11. src/hurdat2_etl/load/load.py
+## 11. src/hurdat2_etl/load/operations.py
+**Summary:** Database write operations implementation
+**Key Issues:**
+1. Manual transaction management violates connection pool design
+2. Hardcoded SQL statements reduce maintainability
+3. No batch-level retry logic
+4. Tight coupling to APSW cursor implementation
+5. Progress tracking per-storm limits performance
+6. Geometry insertion using database-specific function
+7. Connection cleanup error - closes all connections after each operation
+
+**Architectural Improvements:**
+```python
+# Recommended interface
+class IWriter(Protocol):
+    def write_batch(self, batch: list[Storm]) -> None: ...
+    def finalize(self) -> None: ...
+
+# Using SQLAlchemy Core
+def create_storm_statement(table: sa.Table, storm: Storm) -> sa.Insert:
+    return table.insert().values(
+        basin=storm.basin,
+        cyclone_number=storm.cyclone_number,
+        year=storm.year,
+        name=storm.name
+    )
+
+# Add retry decorator
+@retry(tries=3, delay=1, backoff=2)
+def safe_execute(conn, statement):
+    conn.execute(statement)
+```
+
+## 12. src/hurdat2_etl/load/schema.py
 **Summary:** Database loading implementation
 **Key Findings:**
 - Monolithic SQL statements reduce maintainability (lines 75-126)
@@ -436,29 +469,3 @@ class ValidationMode(Enum):
     SCIENTIFIC = auto()
 ```
 
-## Overall Recommendations
-1. **Architectural Patterns:**
-- Implement Pipeline as Directed Acyclic Graph (DAG)
-- Adopt Circuit Breaker pattern for database operations
-- Introduce Data Quality Gate pattern between stages
-
-2. **Performance:**
-- Implement streaming data flow
-- Add batch processing for observations
-- Introduce connection pooling metrics
-
-3. **Observability:**
-- Add OpenTelemetry instrumentation
-- Implement structured logging
-- Create pipeline health check endpoint
-
-4. **Security:**
-- Encrypt sensitive settings
-- Implement input validation pipeline
-- Add audit logging for database operations
-
-## Next Steps
-1. Prioritize streaming implementation
-2. Develop configuration validation suite
-3. Create architectural decision records (ADRs)
-4. Implement observability framework

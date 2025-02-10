@@ -6,7 +6,7 @@
 - [x] Run regression tests and validate results
 - [x] Ensure adequate test coverage for existing codebase
 - [x] Run e2e test against real data set
-- [ ] Code review and corrective actions plan
+- [x] Code review and corrective actions plan
       - [x] @src/hurdat2_etl/exceptions.py
       - [x] @src/hurdat2_etl/main.py
       - [x] @src/hurdat2_etl/transform/transform.py
@@ -18,10 +18,10 @@
       - [x] @src/hurdat2_etl/config/settings.py
       - [x] @src/hurdat2_etl/load/connection.py
       - [x] @src/hurdat2_etl/load/load.py
-      - [ ] @src/hurdat2_etl/load/operations.py
-      - [ ] @src/hurdat2_etl/load/schema.py
-      - [ ] @src/hurdat2_etl/load/reporting.py
-      - [ ] @src/hurdat2_etl/utils/utils.py
+      - [x] @src/hurdat2_etl/load/operations.py
+      - [x] @src/hurdat2_etl/load/schema.py
+      - [x] @src/hurdat2_etl/load/reporting.py
+      - [x] @src/hurdat2_etl/utils/utils.py
 - [ ] Update and finalize implementation
 - [ ] Update documentation
 
