@@ -1,0 +1,104 @@
+[tool.poetry]
+name = "etl-pipeline"
+version = "0.1.0"
+description = "Python ETL Pipeline using DuckDB"
+authors = ["Matt Jackson <matt@jacksonsix.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pydantic = "^2.11.0"
+rich = "^13.9.4"
+typer = "^0.15.2"
+alembic = "^1.15.2"
+duckdb = "^1.2.1"
+duckdb-engine = "^0.15.0"
+
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.15.0"
+pytest = "^8.3.5"
+pytest-cov = "^6.0.0"
+ruff = "^0.11.2"
+pre-commit = "^4.2.0"
+pytest-mock = "^3.14.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# Ruff Configuration 
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "ref",
+    "scripts",
+    "src/etl_pipeline/migrations",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "S", "I", "UP"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["S101", "E501"] 
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+
+# Mypy Configuration
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+disallow_any_generics = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+warn_return_any = false
+check_untyped_defs = false
+disallow_any_generics = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
+
+[[tool.mypy.overrides]]
+module = "etl_pipeline.migrations.versions.*"
+ignore_errors = true
+
+# Pytest Configuration
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra --cov=src --cov-report=term-missing --cov-report=html --cov-report=lcov:lcov.info"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+relative_files = true
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == \"__main__\":",
+    "pass"
+]
