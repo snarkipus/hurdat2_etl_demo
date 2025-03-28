@@ -13,13 +13,13 @@
 **Purpose**: Provides a consistent, organized starting point with testing tools ready for incremental validation.
 
 **Tasks**:
-- [ ] Initialize the project using Poetry with `poetry init`.
+- [x] Initialize the project using Poetry with `poetry init`.
 - [ ] Set up a directory structure:
-  - `src/` for source code
-  - `tests/` for test scripts
-  - `logs/` for log files
-- [ ] Configure static typing with Mypy and linting with Ruff in `pyproject.toml`.
-- [ ] Define dependencies in `pyproject.toml`, including:
+  - [x] `src/` for source code
+  - [x] `tests/` for test scripts
+  - [x] `logs/` for log files
+- [x] Configure static typing with Mypy and linting with Ruff in `pyproject.toml`.
+- [x] Define dependencies in `pyproject.toml`, including:
   - `pydantic` (for data validation)
   - `sqlalchemy` (for ORM and session management)
   - `alembic` (for schema migrations)
@@ -27,14 +27,14 @@
   - `typer` (for CLI framework)
   - `rich` (for progress bars and console output)
   - `pytest` and `pytest-cov` (as dev dependencies for testing)
-- [ ] Create a basic test file `tests/test_basic.py` with a simple passing test (e.g., `assert True`).
-- [ ] Set up Pytest configuration in `pyproject.toml` to run tests from `tests/` and generate coverage reports for `src/`, e.g.:
+- [x] Create a basic test file `tests/test_basic.py` with a simple passing test (e.g., `assert True`).
+- [x] Set up Pytest configuration in `pyproject.toml` to run tests from `tests/` and generate coverage reports for `src/`, e.g.:
   ```toml
   [tool.pytest.ini_options]
   testpaths = ["tests"]
   addopts = "--cov=src --cov-report=term-missing"
   ```
-
+- [x] Setup pre-commit hooks
 ---
 
 ### PHASE 2: IMPLEMENT EXTRACT STAGE
