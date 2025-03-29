@@ -14,10 +14,11 @@ from types import TracebackType
 from typing import Any
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Result
+from sqlalchemy.engine import Engine, Result
 from sqlalchemy.orm import Session, sessionmaker
 
-from etl_pipeline.load.models import Observation, Storm
+# Import Base from models to access metadata
+from etl_pipeline.load.models import Base, Observation, Storm
 from etl_pipeline.load.repository import SqlAlchemyRepository
 
 logger = logging.getLogger(__name__)
@@ -106,8 +107,20 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
         self.session: Session | None = None  # Session initialized in __enter__
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
-        """Starts a new session and initializes repositories."""
+        """Start session, create schema if needed, init repositories."""
         self.session = self.session_factory()
+        # Ensure the engine is available for create_all
+        engine = self.session.bind
+        if not isinstance(engine, Engine):
+            # This case should ideally not happen if session_factory is
+            # configured correctly
+            raise TypeError("Session is not bound to a valid SQLAlchemy Engine.")
+
+        # Create tables based on the metadata defined in models.py
+        logger.debug("Ensuring database schema exists...")
+        Base.metadata.create_all(engine)
+        logger.debug("Database schema check complete.")
+
         self.storms = SqlAlchemyRepository(self.session, Storm)
         self.observations = SqlAlchemyRepository(self.session, Observation)
         return self

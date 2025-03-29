@@ -37,3 +37,4 @@ Thumbs.db
 *.log
 *.sqlite
 *.db
+*.duckdb

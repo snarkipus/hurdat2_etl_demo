@@ -100,8 +100,12 @@ class ExtractStage(ETLStage):
                 # --- Teardown ---
                 # Ensure progress task is stopped even if errors occur
                 if self._task_id is not None:
-                    # Mark task as completed (necessary for indeterminate tasks)
-                    self.console_handler.progress.update(self._task_id, completed=True)
+                    # Update description to show completion and mark as completed
+                    self.console_handler.progress.update(
+                        self._task_id,
+                        description="Extracting data... Done!",
+                        completed=True,  # Mark as completed
+                    )
                     # Optional: Stop the task explicitly if needed, though context
                     # manager handles exit
                     # self.console_handler.progress.stop_task(self._task_id)

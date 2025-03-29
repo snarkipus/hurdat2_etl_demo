@@ -183,7 +183,9 @@ class TestExtractStage:
         mock_process.assert_called_once_with(input_data)
         # Check that update was called to mark the task as completed
         extract_stage.console_handler.progress.update.assert_called_once_with(
-            extract_stage._task_id, completed=True
+            extract_stage._task_id,
+            description="Extracting data... Done!",
+            completed=True,
         )
 
     def test_execute_file_access_error(self, extract_stage, mocker):
@@ -217,7 +219,9 @@ class TestExtractStage:
         extract_stage.logger.error.assert_called_once()
         # Check that update was called to mark the task as completed even on error
         extract_stage.console_handler.progress.update.assert_called_once_with(
-            extract_stage._task_id, completed=True
+            extract_stage._task_id,
+            description="Extracting data... Done!",
+            completed=True,
         )
 
     @pytest.mark.parametrize(

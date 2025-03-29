@@ -1,7 +1,7 @@
 """Unit tests for the SQLAlchemy Unit of Work implementation using pytest-mock."""
 
 import pytest
-from sqlalchemy.engine import Result
+from sqlalchemy.engine import Engine, Result  # Import Engine
 
 # Removed unittest.mock import, will use mocker fixture
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,8 +14,10 @@ from etl_pipeline.load.unit_of_work import SqlAlchemyUnitOfWork
 @pytest.fixture
 def mock_session(mocker):
     """Provides a mocked SQLAlchemy Session using pytest-mock."""
-    # Use mocker.Mock for creating mocks consistent with pytest-mock
-    return mocker.Mock(spec=Session)
+    session = mocker.Mock(spec=Session)
+    # Configure the mock session to have a 'bind' attribute which is a mock Engine
+    session.bind = mocker.Mock(spec=Engine)
+    return session
 
 
 @pytest.fixture

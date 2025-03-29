@@ -112,62 +112,92 @@ class LoadStage(ETLStage):
         transformed_storms: Iterable[PydanticStorm] = data[0]
         transformed_observations: Iterable[PydanticObservation] = data[1]
 
+        # Convert iterables to lists to get counts for progress bars
+        # (Note: In the current CLI flow, they are already lists)
+        storms_list = list(transformed_storms)
+        observations_list = list(transformed_observations)
+        total_storms = len(storms_list)
+        total_observations = len(observations_list)
+
         storm_count = 0
         observation_count = 0
 
         # Use the Unit of Work context manager
-        # The type of 'uow' from the context manager should be inferred correctly
         with self.uow_factory() as uow:
             self.logger.info("Starting data loading process via Unit of Work...")
 
             # Ensure spatial extension is loaded within the transaction
             self._load_spatial_extension(uow)
 
-            # --- Storm Data Loading ---
-            self.logger.info("Loading storm data...")
-            for ts in transformed_storms:
-                # Exclude 'observations' relationship data from the dump
-                storm_data = ts.model_dump(exclude={"observations"})
-                # Explicitly add the storm_id from the Pydantic property
-                storm_data["storm_id"] = ts.storm_id
-                storm_db = DbStorm(**storm_data)
-                uow.storms.add(storm_db)
-                storm_count += 1
-            self.logger.info(f"Added {storm_count} storms to the session.")
+            # Use the progress bar context manager
+            with self.console_handler.progress:
+                # Create progress tasks
+                storm_task_id = self.console_handler.create_task(
+                    description="Loading storms", total=total_storms
+                )
+                obs_task_id = self.console_handler.create_task(
+                    description="Loading observations", total=total_observations
+                )
 
-            # --- Observation Data Loading ---
-            current_observation_id = 1  # Initialize counter for observation IDs
-            self.logger.info("Loading observation data...")
-            for to in transformed_observations:
-                observation_data = to.model_dump(exclude={"location"})
-                latitude = to.location.latitude
-                longitude = to.location.longitude
+                # --- Storm Data Loading ---
+                self.logger.info("Loading storm data...")
+                for ts in storms_list:  # Iterate over the list
+                    # Exclude 'observations' relationship data from the dump
+                    storm_data = ts.model_dump(exclude={"observations"})
+                    # Explicitly add the storm_id from the Pydantic property
+                    storm_data["storm_id"] = ts.storm_id
+                    storm_db = DbStorm(**storm_data)
+                    uow.storms.add(storm_db)
+                    storm_count += 1
+                    # Update storm progress
+                    self.console_handler.update_progress(storm_task_id, advance=1)
+                self.logger.info(f"Added {storm_count} storms to the session.")
 
-                if longitude is not None and latitude is not None:
-                    observation_data["geom"] = f"POINT({longitude} {latitude})"
-                else:
-                    self.logger.warning(
-                        f"Missing lat/lon for observation {to.date}, "
-                        f"cannot create geom."
-                    )
-                    observation_data["geom"] = None
+                # --- Observation Data Loading ---
+                current_observation_id = 1  # Initialize counter for observation IDs
+                self.logger.info("Loading observation data...")
+                for to in observations_list:  # Iterate over the list
+                    observation_data = to.model_dump(exclude={"location"})
+                    latitude = to.location.latitude
+                    longitude = to.location.longitude
 
-                # Add the generated ID
-                observation_data["id"] = current_observation_id
+                    if longitude is not None and latitude is not None:
+                        observation_data["geom"] = f"POINT({longitude} {latitude})"
+                    else:
+                        self.logger.warning(
+                            f"Missing lat/lon for observation {to.date}, "
+                            f"cannot create geom."
+                        )
+                        observation_data["geom"] = None
 
-                # Get storm_id directly from the Pydantic model field
-                # (Error handling for missing attribute removed as it's now required by
-                # Pydantic model)
-                observation_data["storm_id"] = to.storm_id
+                    # Add the generated ID
+                    observation_data["id"] = current_observation_id
 
-                current_observation_id += 1  # Increment ID counter
-                # Create DB object - storm_id is now in observation_data
-                observation_db = DbObservation(**observation_data)
-                uow.observations.add(observation_db)
-                observation_count += 1
-            self.logger.info(f"Added {observation_count} observations to the session.")
+                    # Get storm_id directly from the Pydantic model field
+                    # (Error handling for missing attribute removed as it's now
+                    # required by Pydantic model)
+                    observation_data["storm_id"] = to.storm_id
 
-            # Commit/rollback is handled by the UoW context manager (__exit__)
-            self.logger.info("Data loading finished (commit/rollback handled by UoW).")
+                    current_observation_id += 1  # Increment ID counter
+                    # Create DB object - storm_id is now in observation_data
+                    observation_db = DbObservation(**observation_data)
+                    uow.observations.add(observation_db)
+                    observation_count += 1
+                    # Update observation progress
+                    self.console_handler.update_progress(obs_task_id, advance=1)
+                self.logger.info(
+                    f"Added {observation_count} observations to the session."
+                )
+                # Add an indeterminate task for the commit phase
+                self.console_handler.create_task(
+                    description="Committing data...", total=None
+                )
 
+            # Commit/rollback happens implicitly when 'with uow:' block exits
+            # The 'with self.console_handler.progress:' block also exits,
+            # stopping the display
+        self.logger.info("Commit/rollback initiated by UoW context manager exit.")
+
+        # Return counts after the UoW block has fully completed
+        # (committed or rolled back)
         return storm_count, observation_count
