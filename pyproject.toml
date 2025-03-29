@@ -12,7 +12,7 @@ rich = "^13.9.4"
 typer = "^0.15.2"
 alembic = "^1.15.2"
 duckdb = "^1.2.1"
-duckdb-engine = "^0.15.0"
+duckdb-engine = "^0.17.0"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -131,6 +131,7 @@ class TestObservation:
     def test_observation_creation(self):
         """Test creating a valid Observation instance."""
         obs = Observation(
+            storm_id="AL01TEST",  # Add required storm_id
             date=datetime(2021, 8, 29, 12, 0, tzinfo=UTC),  # Add tzinfo
             record_identifier="L",
             status=StormStatus.HURRICANE,
@@ -163,6 +164,7 @@ class TestObservation:
 
         for max_wind, expected_mph in test_cases:
             obs = Observation(
+                storm_id="AL01TEST",  # Add required storm_id
                 date=datetime(2021, 8, 29, 12, 0, tzinfo=UTC),  # Add tzinfo
                 status=StormStatus.HURRICANE,
                 location=Point(latitude="29.1N", longitude="90.2W"),
@@ -215,6 +217,7 @@ class TestObservation:
         # Test validation for NonNegativeInt fields
         with pytest.raises(ValidationError):  # Expect ValidationError
             Observation(
+                storm_id="AL01TEST",  # Add required storm_id
                 date=datetime(2021, 8, 29, 12, 0, tzinfo=UTC),  # Add tzinfo
                 record_identifier="L",
                 status=StormStatus.HURRICANE,
@@ -225,6 +228,7 @@ class TestObservation:
 
         # Test optional fields can be None
         obs = Observation(
+            storm_id="AL01TEST",  # Add required storm_id
             date=datetime(2021, 8, 29, 12, 0, tzinfo=UTC),  # Add tzinfo
             record_identifier="L",
             status=StormStatus.HURRICANE,

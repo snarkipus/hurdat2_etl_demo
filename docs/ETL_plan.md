@@ -98,15 +98,15 @@
 **Purpose**: Enables storage and spatial analysis of hurricane data.
 
 **Tasks**:
-- [ ] Set up Alembic for schema management, initializing it with `alembic init`.
-- [ ] Define the database schema using SQLAlchemy models in `src/models.py`, e.g.:
+- [x] Set up Alembic for schema management, initializing it with `alembic init`.
+- [x] Define the database schema using SQLAlchemy models in `src/etl_pipeline/load/models.py`, e.g.:
   - `Storm` table: `id`, `name`, `year`, etc.
   - `TrackPoint` table: `id`, `storm_id` (foreign key), `datetime`, `latitude`, `longitude`, `geom` (spatial POINT).
-- [ ] Implement the load logic in `src/etl/load.py` to:
+- [x] Implement the load logic in `src/etl_pipeline/load/load.py` to:
   - Connect to DuckDB and load the spatial extension (`INSTALL spatial; LOAD spatial;`).
   - Insert transformed data using SQLAlchemy sessions (managed by the Unit of Work).
-  - Populate the `geom` column with `ST_Point(longitude, latitude)`.
-- [ ] Write unit tests in `tests/unit/test_load.py` to verify:
+  - Populate the `geom` column with WKT string `POINT(longitude latitude)`.
+- [x] Write unit tests in `tests/unit/test_load.py` to verify:
   - Correct table creation and data insertion.
   - Spatial column population (e.g., query `geom` values).
   - Basic spatial query functionality (e.g., `ST_Distance`).

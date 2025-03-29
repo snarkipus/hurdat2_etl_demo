@@ -112,8 +112,8 @@ class TestExtractStage:
             ),
             (
                 OSError("OS error during read"),
-                "IO error reading file",
-                "IO error reading file",
+                "OS error reading file: fake_path.csv",  # Match exact error message
+                "OS error reading file",
             ),
         ],
     )
@@ -181,7 +181,10 @@ class TestExtractStage:
             description="Extracting data", total=None
         )
         mock_process.assert_called_once_with(input_data)
-        extract_stage.console_handler.progress.stop_task.assert_called_once()
+        # Check that update was called to mark the task as completed
+        extract_stage.console_handler.progress.update.assert_called_once_with(
+            extract_stage._task_id, completed=True
+        )
 
     def test_execute_file_access_error(self, extract_stage, mocker):
         """Verify execute handles file access errors."""
@@ -191,7 +194,9 @@ class TestExtractStage:
         with pytest.raises(ExtractionError) as excinfo:
             list(extract_stage.execute(input_data))
 
-        assert "Could not access file" in str(excinfo.value)
+        assert "Could not access source file" in str(
+            excinfo.value
+        )  # Updated error message
         extract_stage.logger.error.assert_called_once()
         assert "Error accessing file" in extract_stage.logger.error.call_args[0][0]
 
@@ -210,7 +215,10 @@ class TestExtractStage:
         assert "Extraction failed unexpectedly" in str(excinfo.value)
         assert isinstance(excinfo.value.__cause__, ValueError)
         extract_stage.logger.error.assert_called_once()
-        extract_stage.console_handler.progress.stop_task.assert_called_once()
+        # Check that update was called to mark the task as completed even on error
+        extract_stage.console_handler.progress.update.assert_called_once_with(
+            extract_stage._task_id, completed=True
+        )
 
     @pytest.mark.parametrize(
         "invalid_data", [None, "string", 123, [], {"wrong_key": "path"}]
@@ -219,11 +227,16 @@ class TestExtractStage:
         """Verify execute validates input data structure."""
         with pytest.raises(TypeError) as excinfo:
             list(extract_stage.execute(invalid_data))
-        assert "Input data must be a dict with a 'file_path' key" in str(excinfo.value)
+        # Match the updated error message from ExtractStage.execute
+        assert (
+            "Input data for ExtractStage must be a dict with a 'file_path' key"
+            in str(excinfo.value)
+        )
 
     def test_execute_invalid_filepath_type(self, extract_stage):
         """Verify execute validates file_path is a string."""
         input_data = {"file_path": 123}
         with pytest.raises(ValueError) as excinfo:
             list(extract_stage.execute(input_data))
-        assert "'file_path' must be a string" in str(excinfo.value)
+        # Match the updated error message from ExtractStage.execute
+        assert "'file_path' value must be a string" in str(excinfo.value)

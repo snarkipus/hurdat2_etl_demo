@@ -224,8 +224,9 @@ def test_group_into_storms_no_obs(transform_stage):
     grouped = transform_stage._group_into_storms(RAW_DATA_NO_OBS)
     assert len(grouped) == 1
     assert grouped[0] == (SAMPLE_HEADER_2, [SAMPLE_OBS_2_1])
+    # Match the updated warning message from the implementation
     transform_stage.logger.warning.assert_called_once_with(
-        f"Header {SAMPLE_HEADER_1[0].strip()} found with no observation rows."
+        f"Header {SAMPLE_HEADER_1[0].strip()} found with no observation rows following it."
     )
 
 
@@ -235,8 +236,11 @@ def test_create_storm_valid(mocker, transform_stage):
         "etl_pipeline.transform.transform.parse_header_line"
     )
     mock_parse_track = mocker.patch("etl_pipeline.transform.transform.parse_track_line")
-    mock_obs_model = mocker.patch("etl_pipeline.transform.transform.Observation")
-    mock_storm_model = mocker.patch("etl_pipeline.transform.transform.Storm")
+    # Patch the name as it's imported and used in transform.py
+    mock_obs_model = mocker.patch(
+        "etl_pipeline.transform.transform.PydanticObservation"
+    )
+    mock_storm_model = mocker.patch("etl_pipeline.transform.transform.PydanticStorm")
 
     mock_date_1 = mocker.MagicMock()
     mock_date_2 = mocker.MagicMock()
@@ -311,8 +315,11 @@ def test_create_storm_skips_invalid_observation(mocker, transform_stage):
         "etl_pipeline.transform.transform.parse_header_line"
     )
     mock_parse_track = mocker.patch("etl_pipeline.transform.transform.parse_track_line")
-    mock_obs_model = mocker.patch("etl_pipeline.transform.transform.Observation")
-    mock_storm_model = mocker.patch("etl_pipeline.transform.transform.Storm")
+    # Patch the name as it's imported and used in transform.py
+    mock_obs_model = mocker.patch(
+        "etl_pipeline.transform.transform.PydanticObservation"
+    )
+    mock_storm_model = mocker.patch("etl_pipeline.transform.transform.PydanticStorm")
 
     mock_date_1 = mocker.MagicMock()
     mock_date_2 = mocker.MagicMock()
@@ -351,17 +358,22 @@ def test_create_storm_skips_invalid_observation(mocker, transform_stage):
 def test_create_observation_valid(mocker, transform_stage):
     """Test creating a valid observation."""
     mock_parse_track = mocker.patch("etl_pipeline.transform.transform.parse_track_line")
+    # Patch the name as it's imported and used in transform.py
     mock_obs_model = mocker.patch(
-        "etl_pipeline.transform.transform.Observation", wraps=Observation
+        "etl_pipeline.transform.transform.PydanticObservation", wraps=Observation
     )
     mock_date = mocker.MagicMock()
     mock_obs_data = {**MOCK_PARSED_OBS_1_1_DICT_STRUCTURE, "date": mock_date}
+    dummy_storm_id = "AL01TEST"
 
     mock_parse_track.return_value = mock_obs_data
-    obs = transform_stage._create_observation(SAMPLE_OBS_1_1)
+    # Pass dummy storm_id
+    obs = transform_stage._create_observation(SAMPLE_OBS_1_1, dummy_storm_id)
 
     mock_parse_track.assert_called_once_with(SAMPLE_OBS_1_1)
-    mock_obs_model.assert_called_once_with(**mock_obs_data)
+    # Check that storm_id was added before calling the model constructor
+    expected_call_data = {**mock_obs_data, "storm_id": dummy_storm_id}
+    mock_obs_model.assert_called_once_with(**expected_call_data)
     assert isinstance(obs, Observation)
 
 
@@ -369,29 +381,36 @@ def test_create_observation_parser_fails(mocker, transform_stage):
     """Test observation creation fails if parser returns None."""
     mock_parse_track = mocker.patch("etl_pipeline.transform.transform.parse_track_line")
     mock_parse_track.return_value = None
+    dummy_storm_id = "AL01TEST"
 
     with pytest.raises(TransformError, match="Parser failed to extract essential data"):
-        transform_stage._create_observation(INVALID_OBS_ROW)
+        # Pass dummy storm_id
+        transform_stage._create_observation(INVALID_OBS_ROW, dummy_storm_id)
     mock_parse_track.assert_called_once_with(INVALID_OBS_ROW)
 
 
 def test_create_observation_validation_fails(mocker, transform_stage):
     """Test observation creation fails if Pydantic validation fails."""
     mock_parse_track = mocker.patch("etl_pipeline.transform.transform.parse_track_line")
+    # Patch the name as it's imported and used in transform.py
     mock_obs_model = mocker.patch(
-        "etl_pipeline.transform.transform.Observation",
+        "etl_pipeline.transform.transform.PydanticObservation",
         side_effect=PydanticValidationError.from_exception_data("mock error", []),
     )
     mock_date = mocker.MagicMock()
     mock_obs_data = {**MOCK_PARSED_OBS_1_1_DICT_STRUCTURE, "date": mock_date}
 
     mock_parse_track.return_value = mock_obs_data
+    dummy_storm_id = "AL01TEST"
 
     with pytest.raises(ValidationError):
-        transform_stage._create_observation(SAMPLE_OBS_1_1)
+        # Pass dummy storm_id
+        transform_stage._create_observation(SAMPLE_OBS_1_1, dummy_storm_id)
 
     mock_parse_track.assert_called_once_with(SAMPLE_OBS_1_1)
-    mock_obs_model.assert_called_once_with(**mock_obs_data)
+    # Check that storm_id was added before calling the model constructor
+    expected_call_data = {**mock_obs_data, "storm_id": dummy_storm_id}
+    mock_obs_model.assert_called_once_with(**expected_call_data)
 
 
 def test_process_integration(mocker, transform_stage):

@@ -214,13 +214,13 @@ files = [
 
 [[package]]
 name = "duckdb-engine"
-version = "0.15.0"
+version = "0.17.0"
 description = "SQLAlchemy driver for duckdb"
 optional = false
-python-versions = "<4,>=3.8"
+python-versions = "<4,>=3.9"
 files = [
-    {file = "duckdb_engine-0.15.0-py3-none-any.whl", hash = "sha256:d18acd73f03202145e1baa86605dca3612080fd0a849dbc42b38111ffee6857c"},
-    {file = "duckdb_engine-0.15.0.tar.gz", hash = "sha256:59f67ec95ebf9eb4dea22994664dfd34edce3c7416b862daa46da43f572ad6ef"},
+    {file = "duckdb_engine-0.17.0-py3-none-any.whl", hash = "sha256:3aa72085e536b43faab635f487baf77ddc5750069c16a2f8d9c6c3cb6083e979"},
+    {file = "duckdb_engine-0.17.0.tar.gz", hash = "sha256:396b23869754e536aa80881a92622b8b488015cf711c5a40032d05d2cf08f3cf"},
 ]
 
 [package.dependencies]
@@ -1092,4 +1092,4 @@ test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "fc707f0368877c2d879f446c93b576398c18c6b21ce628ec33c8bab2115b709a"
+content-hash = "f09a8434021cacc32dd1483e6f1e26cd4f0b97fc2116a0d598298fcc412a6da7"

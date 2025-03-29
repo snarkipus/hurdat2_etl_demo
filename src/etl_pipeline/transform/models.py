@@ -118,6 +118,7 @@ IsoDateTime = Annotated[datetime, AfterValidator(validate_iso_datetime)]
 class Observation(BaseModel):
     """Single hurricane observation record."""
 
+    storm_id: str = Field(..., description="Unique identifier of the parent storm")
     date: IsoDateTime
     record_identifier: str | None = None
     status: StormStatus
