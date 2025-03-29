@@ -30,8 +30,8 @@ This PRD outlines the requirements for an ETL (Extract, Transform, Load) pipelin
 - Use Pydantic for data conversion and validation, ensuring fields conform to expected types and ranges.
 - Standardize date and time into UTC datetime, combining year, month, day, hours, and minutes from the CSV.
 - Convert latitude and longitude to decimal degrees, accounting for hemisphere indicators (N/S, W/E), with negative values for south and west (i.e., WGS84).
-- Handle missing values, such as pressure or wind radii marked as "-999," by setting to NULL or a placeholder.
-- Normalize wind speed units, ensuring consistency (e.g., knots), given historical variations in precision (nearest 10 kt pre-1886, nearest 5 kt post-1886).
+- Handle missing values, such as pressure or wind radii marked as "-999"  or "-99" by setting to NULL (e.g. common database standard for missing values).
+- Normalize wind speed units (i.e., knots to mph)
 
 ### Load Stage
 - Use SQLAlchemy for ORM and session management, facilitating database interactions.

@@ -14,7 +14,7 @@
 
 **Tasks**:
 - [x] Initialize the project using Poetry with `poetry init`.
-- [ ] Set up a directory structure:
+- [x] Set up a directory structure:
   - [x] `src/` for source code
   - [x] `tests/` for test scripts
   - [x] `logs/` for log files
@@ -43,20 +43,20 @@
 
 **Testing Integration**:
 - Write unit tests for the CSV parser using a sample dataset.
-- Ensure the parser correctly identifies header and data lines, handles missing values, and extracts all fields as strings.
+- Ensure the parser correctly reads CSV lines, handles missing values, and extracts all fields as strings.
 
-**Deliverable**: A working CSV parser that extracts storm headers and track points into Python data structures.
+**Deliverable**: A working CSV parser that extracts raw CSV rows as lists of strings.
 
 **Purpose**: Provides the foundation for data ingestion, enabling subsequent transformation and loading stages.
 
 **Tasks**:
-- [ ] Create a sample HURDAT2 CSV file in `tests/data/` for testing (e.g., a small excerpt with a few storms and track points).
-- [ ] Implement the CSV parsing logic in `src/etl/extract.py`, producing a list of storm dictionaries with header metadata and track point lists.
-- [ ] Define data structures (e.g., lists and dictionaries) to hold raw extracted data, maintaining all fields as strings per the PRD.
-- [ ] Write unit tests in `tests/unit/test_extract.py` to verify:
-  - Correct parsing of header and data lines.
-  - Proper handling of missing values (e.g., "-999").
-  - Accurate extraction of storm and track point counts.
+- [x] Create a sample HURDAT2 CSV file in `tests/data/` for testing (e.g., a small excerpt with a few storms and track points).
+- [x] Implement the CSV parsing logic in `src/etl_pipeline/extract/extract.py`, producing an iterator of lists of strings
+- [x] Ensure the parser yields raw rows as lists of strings, maintaining all fields as strings per the PRD.
+- [x] Write unit tests in `tests/unit/test_extract.py` to verify:
+  - Correct reading and yielding of raw CSV rows as lists of strings.
+  - Proper handling of exceptions and errors.
+  - Correct logging and console output.
 
 ---
 

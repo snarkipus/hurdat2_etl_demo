@@ -66,6 +66,9 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
 disallow_any_generics = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"  # Tell mypy where to look for modules
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -84,7 +87,7 @@ ignore_errors = true
 # Pytest Configuration
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra --cov=src --cov-report=term-missing --cov-report=html --cov-report=lcov:lcov.info"
+addopts = "-ra --cov=src --cov-report=term-missing --cov-report=html --cov-report=lcov:lcov.info --cov-fail-under=80"
 testpaths = ["tests"]
 
 [tool.coverage.run]
