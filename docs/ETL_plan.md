@@ -73,12 +73,12 @@
 **Purpose**: Ensures data consistency and accuracy before loading into the database.
 
 **Tasks**:
-- [ ] Define Pydantic models for storm headers and track points in `src/models.py`, specifying fields like `datetime: datetime`, `latitude: float`, `longitude: float`, etc.
-- [ ] Implement transformation functions in `src/etl/transform.py` to convert raw data into Pydantic model instances, including:
+- [x] Define Pydantic models for storm headers and track points in `src/models.py`, specifying fields like `datetime: datetime`, `latitude: float`, `longitude: float`, etc.
+- [x] Implement transformation functions in `src/etl/transform.py` to convert raw data into Pydantic model instances, including:
   - Combining date and time into UTC datetime (e.g., "20230101" and "1200" to `datetime` object).
   - Converting latitude/longitude to decimal degrees (e.g., "29.5N" to `29.5`, "80.0W" to `-80.0`).
   - Mapping missing values (e.g., "-999") to `None`.
-- [ ] Write unit tests in `tests/unit/test_transform.py` to verify:
+- [x] Write unit tests in `tests/unit/test_transform.py` to verify:
   - Accurate field conversions.
   - Validation errors for invalid data.
   - Proper handling of historical wind speed precision (e.g., nearest 5 kt post-1886).
