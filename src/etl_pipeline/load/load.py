@@ -1,18 +1,17 @@
 """
 Defines the Load stage of the ETL pipeline using the ETLStage base class.
-
-This stage is responsible for loading transformed data into the DuckDB database
-using the Repository and Unit of Work patterns.
 """
 
 import logging
-from collections.abc import Callable, Iterable  # Add Callable
+from collections.abc import Callable
 from typing import Any
 
 from rich.console import Console
 
+from etl_pipeline.core import ETLStage, ProgressManager
+from etl_pipeline.exceptions import LoadError
+
 # Alias DB models to avoid name clash with Pydantic models
-from etl_pipeline.core import ETLStage  # Import the base class
 from etl_pipeline.load.models import Observation as DbObservation
 from etl_pipeline.load.models import Storm as DbStorm
 from etl_pipeline.load.unit_of_work import AbstractUnitOfWork, SqlAlchemyUnitOfWork
@@ -29,6 +28,7 @@ class LoadStage(ETLStage):
         self,
         uow_factory: Callable[[], AbstractUnitOfWork] = SqlAlchemyUnitOfWork,
         console: Console | None = None,
+        progress_manager: ProgressManager | None = None,
         log_level: int = logging.INFO,
     ) -> None:
         """
@@ -37,27 +37,52 @@ class LoadStage(ETLStage):
         Args:
             uow_factory: A factory function or class that returns an
                          instance conforming to the AbstractUnitOfWork protocol.
-                         Defaults to SqlAlchemyUnitOfWork.
             console: An optional Rich Console instance for progress display.
+            progress_manager: An optional shared progress manager.
             log_level: The logging level (e.g., logging.INFO).
         """
-        super().__init__(name="load", console=console, log_level=log_level)
+        super().__init__(
+            name="load",
+            console=console,
+            progress_manager=progress_manager,
+            log_level=log_level,
+        )
         self.uow_factory = uow_factory
 
     def _load_spatial_extension(self, uow: AbstractUnitOfWork) -> None:
         """
         Ensures the DuckDB spatial extension is installed and loaded.
-
-        Args:
-            uow: The Unit of Work instance managing the database session.
-
-        Raises:
-            RuntimeError: If loading or checking the spatial extension fails.
         """
         try:
+            if self.progress_manager:
+                self.progress_manager.add_task("db_setup", "Setting up database", 100)
+                # Start at 10%
+                try:
+                    self.progress_manager.progress.update(
+                        self.progress_manager.tasks["db_setup"], completed=10
+                    )
+                except (AttributeError, KeyError):
+                    # For tests using mocks
+                    self.progress_manager.update("db_setup", advance=10)
+
             uow.execute(statement="INSTALL spatial;")
             uow.execute(statement="LOAD spatial;")
-            self.logger.info("DuckDB spatial extension installed and loaded via UoW.")
+
+            if self.progress_manager:
+                # Update to 100% before completing
+                try:
+                    self.progress_manager.progress.update(
+                        self.progress_manager.tasks["db_setup"], completed=100
+                    )
+                except (AttributeError, KeyError):
+                    # For tests using mocks
+                    self.progress_manager.update("db_setup", completed=100)
+                self.progress_manager.complete_task(
+                    "db_setup", "Database setup complete"
+                )
+
+            self.logger.info("DuckDB spatial extension installed and loaded.")
+
         except Exception as install_exc:
             self.logger.warning(
                 f"Could not install spatial extension (may be installed already): "
@@ -69,9 +94,26 @@ class LoadStage(ETLStage):
                     "WHERE extension_name = 'spatial';"
                 )
                 result = uow.execute(statement=query).scalar_one_or_none()
+
                 if result:
+                    if self.progress_manager:
+                        # Update to 100% before completing
+                        try:
+                            self.progress_manager.progress.update(
+                                self.progress_manager.tasks["db_setup"], completed=100
+                            )
+                        except (AttributeError, KeyError):
+                            # For tests using mocks
+                            self.progress_manager.update("db_setup", completed=100)
+                        self.progress_manager.complete_task(
+                            "db_setup", "Database setup complete"
+                        )
                     self.logger.info("DuckDB spatial extension confirmed loaded.")
                 else:
+                    if self.progress_manager:
+                        self.progress_manager.complete_task(
+                            "db_setup", "Database setup FAILED"
+                        )
                     self.logger.error(
                         "DuckDB spatial extension failed to install and is not loaded."
                     )
@@ -79,6 +121,10 @@ class LoadStage(ETLStage):
                         "DuckDB spatial extension is required but could not be loaded."
                     ) from install_exc
             except Exception as check_exc:
+                if self.progress_manager:
+                    self.progress_manager.complete_task(
+                        "db_setup", "Database setup FAILED"
+                    )
                 self.logger.error(
                     f"Failed to check if spatial extension is loaded: {check_exc}"
                 )
@@ -86,7 +132,7 @@ class LoadStage(ETLStage):
                     "Failed to verify DuckDB spatial extension status."
                 ) from check_exc
 
-    def _process(self, data: Any) -> Any:
+    def _process(self, data: Any) -> tuple[int, int]:
         """
         Core logic for the Load stage.
 
@@ -94,14 +140,14 @@ class LoadStage(ETLStage):
         storms and observations. Loads data into the database using a Unit of Work.
 
         Args:
-            data: A tuple containing (Iterable[PydanticStorm],
-                  Iterable[PydanticObservation]).
+            data: A tuple containing (List[PydanticStorm], List[PydanticObservation]).
 
         Returns:
             A tuple containing the count of loaded storms and observations.
 
         Raises:
             TypeError: If the input data is not in the expected format.
+            LoadError: If database operations fail.
         """
         if not isinstance(data, tuple) or len(data) != 2:
             raise TypeError(
@@ -109,95 +155,189 @@ class LoadStage(ETLStage):
                 "(transformed_storms, transformed_observations)"
             )
 
-        transformed_storms: Iterable[PydanticStorm] = data[0]
-        transformed_observations: Iterable[PydanticObservation] = data[1]
+        try:
+            # Get the storm and observation lists
+            storms_list: list[PydanticStorm] = list(data[0])
+            observations_list: list[PydanticObservation] = list(data[1])
 
-        # Convert iterables to lists to get counts for progress bars
-        # (Note: In the current CLI flow, they are already lists)
-        storms_list = list(transformed_storms)
-        observations_list = list(transformed_observations)
-        total_storms = len(storms_list)
-        total_observations = len(observations_list)
+            total_storms = len(storms_list)
+            total_observations = len(observations_list)
 
-        storm_count = 0
-        observation_count = 0
+            self.logger.info(
+                f"Starting to load {total_storms} storms and {total_observations} observations"
+            )
 
-        # Use the Unit of Work context manager
-        with self.uow_factory() as uow:
-            self.logger.info("Starting data loading process via Unit of Work...")
+            # Use the Unit of Work to manage the database session
+            with self.uow_factory() as uow:
+                # Load spatial extension
+                self._load_spatial_extension(uow)
 
-            # Ensure spatial extension is loaded within the transaction
-            self._load_spatial_extension(uow)
+                # Setup progress tracking
+                if self.progress_manager:
+                    # Add tasks for storms and observations
+                    if total_storms > 0:
+                        self.progress_manager.add_task(
+                            "load_storms", "Loading storms", total_storms
+                        )
 
-            # Use the progress bar context manager
-            with self.console_handler.progress:
-                # Create progress tasks
-                storm_task_id = self.console_handler.create_task(
-                    description="Loading storms", total=total_storms
-                )
-                obs_task_id = self.console_handler.create_task(
-                    description="Loading observations", total=total_observations
-                )
+                    if total_observations > 0:
+                        self.progress_manager.add_task(
+                            "load_observations",
+                            "Loading observations",
+                            total_observations,
+                        )
 
-                # --- Storm Data Loading ---
-                self.logger.info("Loading storm data...")
-                for ts in storms_list:  # Iterate over the list
-                    # Exclude 'observations' relationship data from the dump
-                    storm_data = ts.model_dump(exclude={"observations"})
-                    # Explicitly add the storm_id from the Pydantic property
-                    storm_data["storm_id"] = ts.storm_id
+                # --- Load Storm Data ---
+                if self.progress_manager and total_storms > 0:
+                    self.progress_manager.add_task(
+                        "load_storms", "Preparing storm records", total_storms
+                    )
+
+                storm_count = 0
+                batch_count = 0
+                batch_size = max(1, min(50, total_storms // 20))  # Adaptive batch size
+
+                for storm in storms_list:
+                    # Create and add DB storm object
+                    storm_data = storm.model_dump(exclude={"observations"})
+                    storm_data["storm_id"] = storm.storm_id
+
                     storm_db = DbStorm(**storm_data)
                     uow.storms.add(storm_db)
                     storm_count += 1
-                    # Update storm progress
-                    self.console_handler.update_progress(storm_task_id, advance=1)
-                self.logger.info(f"Added {storm_count} storms to the session.")
+                    batch_count += 1
 
-                # --- Observation Data Loading ---
-                current_observation_id = 1  # Initialize counter for observation IDs
-                self.logger.info("Loading observation data...")
-                for to in observations_list:  # Iterate over the list
-                    observation_data = to.model_dump(exclude={"location"})
-                    latitude = to.location.latitude
-                    longitude = to.location.longitude
+                    # Update progress in batches
+                    if self.progress_manager and batch_count >= batch_size:
+                        self.progress_manager.update(
+                            "load_storms",
+                            advance=batch_count,
+                            description=f"Loading storms: {storm_count:,}/{total_storms:,}",
+                        )
+                        batch_count = 0
 
+                # Update remaining storms
+                if self.progress_manager and batch_count > 0:
+                    self.progress_manager.update("load_storms", advance=batch_count)
+
+                # Complete storms task
+                if self.progress_manager and total_storms > 0:
+                    self.progress_manager.complete_task(
+                        "load_storms", f"Loaded {storm_count:,} storm records"
+                    )
+
+                # --- Load Observation Data ---
+                if self.progress_manager and total_observations > 0:
+                    self.progress_manager.add_task(
+                        "load_observations",
+                        "Loading observation data",
+                        total_observations,
+                    )
+
+                observation_count = 0
+                current_observation_id = 1
+                batch_count = 0
+                batch_size = max(
+                    1000, min(5000, total_observations // 20)
+                )  # Larger batch size for observations
+
+                for obs in observations_list:
+                    # Prepare observation data
+                    observation_data = obs.model_dump(exclude={"location"})
+
+                    # Generate geometry
+                    latitude = obs.location.latitude
+                    longitude = obs.location.longitude
                     if longitude is not None and latitude is not None:
                         observation_data["geom"] = f"POINT({longitude} {latitude})"
                     else:
                         self.logger.warning(
-                            f"Missing lat/lon for observation {to.date}, "
-                            f"cannot create geom."
+                            f"Missing lat/lon for observation {obs.date}, cannot create geom."
                         )
                         observation_data["geom"] = None
 
-                    # Add the generated ID
+                    # Add IDs
                     observation_data["id"] = current_observation_id
+                    observation_data["storm_id"] = obs.storm_id
 
-                    # Get storm_id directly from the Pydantic model field
-                    # (Error handling for missing attribute removed as it's now
-                    # required by Pydantic model)
-                    observation_data["storm_id"] = to.storm_id
-
-                    current_observation_id += 1  # Increment ID counter
-                    # Create DB object - storm_id is now in observation_data
+                    # Create and add DB object
                     observation_db = DbObservation(**observation_data)
                     uow.observations.add(observation_db)
+
+                    # Update counters
+                    current_observation_id += 1
                     observation_count += 1
-                    # Update observation progress
-                    self.console_handler.update_progress(obs_task_id, advance=1)
-                self.logger.info(
-                    f"Added {observation_count} observations to the session."
-                )
-                # Add an indeterminate task for the commit phase
-                self.console_handler.create_task(
-                    description="Committing data...", total=None
-                )
+                    batch_count += 1
 
-            # Commit/rollback happens implicitly when 'with uow:' block exits
-            # The 'with self.console_handler.progress:' block also exits,
-            # stopping the display
-        self.logger.info("Commit/rollback initiated by UoW context manager exit.")
+                    # Update progress in batches
+                    if self.progress_manager and batch_count >= batch_size:
+                        percent = int(observation_count / total_observations * 100)
+                        self.progress_manager.update(
+                            "load_observations",
+                            advance=batch_count,
+                            description=f"Loading observations: {percent}% complete",
+                        )
+                        batch_count = 0
 
-        # Return counts after the UoW block has fully completed
-        # (committed or rolled back)
-        return storm_count, observation_count
+                # Update remaining observations
+                if self.progress_manager and batch_count > 0:
+                    self.progress_manager.update(
+                        "load_observations", advance=batch_count
+                    )
+
+                # Complete observations task
+                if self.progress_manager and total_observations > 0:
+                    self.progress_manager.complete_task(
+                        "load_observations",
+                        f"Loaded {observation_count:,} observations",
+                    )
+
+                # Add commit task with determinate progress
+                if self.progress_manager:
+                    self.progress_manager.add_task(
+                        "commit", "Saving data to database", 100
+                    )
+                    # Start at 10%
+                    try:
+                        self.progress_manager.progress.update(
+                            self.progress_manager.tasks["commit"], completed=10
+                        )
+                    except (AttributeError, KeyError):
+                        # For tests using mocks
+                        self.progress_manager.update("commit", advance=10)
+
+                # Commit data
+                self.logger.info("Committing data to database...")
+                if self.progress_manager:
+                    # Update to 90%
+                    try:
+                        self.progress_manager.progress.update(
+                            self.progress_manager.tasks["commit"], completed=90
+                        )
+                    except (AttributeError, KeyError):
+                        # For tests using mocks
+                        self.progress_manager.update("commit", advance=80)
+
+                # Mark commit as complete
+                if self.progress_manager:
+                    # Ensure we're at 100%
+                    try:
+                        self.progress_manager.progress.update(
+                            self.progress_manager.tasks["commit"], completed=100
+                        )
+                    except (AttributeError, KeyError):
+                        # For tests using mocks
+                        self.progress_manager.update("commit", advance=10)
+                    # Complete the task
+                    self.progress_manager.complete_task(
+                        "commit", "Data committed to database"
+                    )
+
+            self.logger.info(
+                f"Load complete: {storm_count} storms, {observation_count} observations"
+            )
+            return storm_count, observation_count
+
+        except Exception as e:
+            self.logger.error(f"Failed to load data: {e}", exc_info=True)
+            raise LoadError(f"Database load failed: {e}") from e

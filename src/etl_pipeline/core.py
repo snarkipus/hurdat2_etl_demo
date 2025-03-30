@@ -51,112 +51,176 @@ class BaseLogger:
             self.logger.addHandler(file_handler)
 
     def debug(self, message: str, *args: Any, **kwargs: Any) -> None:
-        """Logs a message with level DEBUG."""
         self.logger.debug(message, *args, **kwargs)
 
     def info(self, message: str, *args: Any, **kwargs: Any) -> None:
-        """Logs a message with level INFO."""
         self.logger.info(message, *args, **kwargs)
 
     def warning(self, message: str, *args: Any, **kwargs: Any) -> None:
-        """Logs a message with level WARNING."""
         self.logger.warning(message, *args, **kwargs)
 
     def error(
         self, message: str, exc_info: bool = False, *args: Any, **kwargs: Any
     ) -> None:
-        """
-        Logs a message with level ERROR.
-
-        Args:
-            message: The message string to log.
-            exc_info: If True, exception information is added to the log message.
-            *args: Variable length argument list for string formatting.
-            **kwargs: Arbitrary keyword arguments passed to the logger.
-        """
-        # Pass exc_info explicitly if True, otherwise rely on kwargs if passed
-        # differently
         if exc_info:
             self.logger.error(message, *args, exc_info=True, **kwargs)
         else:
             self.logger.error(message, *args, **kwargs)
 
     def critical(self, message: str, *args: Any, **kwargs: Any) -> None:
-        """Logs a message with level CRITICAL."""
         self.logger.critical(message, *args, **kwargs)
 
 
-class BaseConsole:
+class ProgressManager:
     """
-    Provides Rich console and progress bar functionality for ETL stages.
+    Centralized manager for all progress displays in the ETL pipeline.
 
-    Manages a Rich Console instance and a pre-configured Progress bar.
+    Provides a single consistent interface for creating and updating progress bars
+    across all ETL stages, ensuring a coherent UI experience.
     """
 
     def __init__(self, console: Console | None = None):
         """
-        Initializes the console handler.
+        Initialize the progress manager with a shared console.
 
         Args:
-            console: An optional existing Rich Console instance. If None,
-                     a new one is created.
+            console: An optional Rich Console to use. If None, creates a new one.
         """
         self.console = console or Console()
-        self.progress = self._create_progress_bar()
+        self.progress = self._create_progress()
+        self.active = False
+        self.tasks: dict[str, TaskID] = {}
 
-    def _create_progress_bar(self) -> Progress:
-        """Creates and configures a Rich Progress instance."""
+    def _create_progress(self) -> Progress:
+        """Creates a consistent progress display configuration."""
         return Progress(
             SpinnerColumn(),
-            TextColumn("[cyan]{task.description:<35}"),  # Task description
-            BarColumn(bar_width=80),  # Progress bar
-            TextColumn("{task.percentage:>3.0f}%"),  # Percentage complete
-            TimeElapsedColumn(),  # Time elapsed
-            console=self.console,  # Use the managed console
+            TextColumn("[bold blue]{task.description:<45}"),
+            BarColumn(complete_style="bright_magenta", finished_style="bright_green"),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            console=self.console,
+            expand=True,
+            refresh_per_second=15,
+            auto_refresh=True,
         )
 
-    def print(self, *args: Any, **kwargs: Any) -> None:
-        """Prints output to the Rich console."""
-        self.console.print(*args, **kwargs)
+    def start(self) -> None:
+        """Start the progress display if not already active."""
+        if not self.active:
+            # Use progress's live display property for checking
+            if not hasattr(self.progress, "live") or not self.progress.live.is_started:
+                self.progress.start()
+            self.active = True
 
-    def update_progress(self, task_id: TaskID, advance: int = 1) -> None:
-        """Updates the progress of a specific task in the progress bar."""
-        self.progress.update(task_id, advance=advance)
+    def stop(self) -> None:
+        """Stop the progress display if active."""
+        if self.active:
+            # Use progress's live display property for checking
+            if hasattr(self.progress, "live") and self.progress.live.is_started:
+                self.progress.stop()
+            self.active = False
 
-    def create_task(self, description: str, total: int | None = None) -> TaskID:
+    def add_task(self, name: str, description: str, total: int | None = None) -> None:
         """
-        Adds a new task to the progress bar.
+        Add a new task to the progress display.
 
         Args:
-            description: Text description of the task.
-            total: The total number of steps for the task. If None, the task
-                   progress is indeterminate.
-
-        Returns:
-            The TaskID of the newly created task.
+            name: A unique identifier for the task
+            description: User-friendly description of the task
+            total: The total steps for the task, or None for indeterminate
         """
-        # Rich Progress allows total=None for indeterminate tasks
-        return self.progress.add_task(description, total=total)
+        if name in self.tasks:
+            return  # Avoid adding duplicate tasks
+
+        task_id = self.progress.add_task(description, total=total)
+        self.tasks[name] = task_id
+
+    def update(
+        self,
+        name: str,
+        advance: int = 1,
+        completed: int | None = None,
+        description: str | None = None,
+    ) -> None:
+        """
+        Update a task's progress.
+
+        Args:
+            name: The task identifier
+            advance: How much to advance the task
+            completed: Directly set the completed status
+            description: Update the task description
+        """
+        if name not in self.tasks:
+            return
+
+        # Build update kwargs to pass to progress
+        update_kwargs: dict[str, Any] = {"advance": advance}
+        if completed is not None:
+            update_kwargs["completed"] = completed
+        if description is not None:
+            update_kwargs["description"] = description
+
+        self.progress.update(self.tasks[name], **update_kwargs)
+
+    def complete_task(self, name: str, description: str | None = None) -> None:
+        """
+        Mark a task as completed.
+
+        Args:
+            name: The task identifier
+            description: Optional updated description for the completed task
+        """
+        if name not in self.tasks:
+            return
+
+        task_id = self.tasks[name]
+
+        # Get the task's total value to ensure we set completed to 100%
+        task = self.progress.tasks[task_id]
+        total = task.total if task.total is not None else 0
+
+        # Force completed to 100%
+        if total > 0:
+            # Update with direct completion value
+            self.progress.update(task_id, completed=total, visible=True)
+        else:
+            # For indeterminate progress, just mark as completed=1 (100%)
+            self.progress.update(task_id, completed=1, visible=True)
+
+        # Update description if provided
+        if description:
+            self.progress.update(task_id, description=description)
+
+    def remove_task(self, name: str) -> None:
+        """
+        Remove a task from the progress display.
+
+        Args:
+            name: The task identifier
+        """
+        if name not in self.tasks:
+            return
+
+        task_id = self.tasks[name]
+        self.progress.remove_task(task_id)
+        del self.tasks[name]
 
 
 class ETLStage(ABC):
     """
     Abstract base class for all ETL pipeline stages (Extract, Transform, Load).
 
-    Provides common functionality like logging and console/progress handling
-    through composition of BaseLogger and BaseConsole. Requires subclasses
-    to implement the `_process` method.
+    Provides common functionality like logging and console/progress handling.
+    Requires subclasses to implement the `_process` method.
     """
-
-    # Class-level type annotations for instance variables
-    name: str
-    logger: BaseLogger
-    console_handler: BaseConsole
 
     def __init__(
         self,
         name: str,
         console: Console | None = None,
+        progress_manager: ProgressManager | None = None,
         log_level: int = logging.INFO,
     ):
         """
@@ -165,12 +229,17 @@ class ETLStage(ABC):
         Args:
             name: The name of the stage (e.g., "extract", "transform").
             console: An optional Rich Console instance to use.
+            progress_manager: An optional shared progress manager.
             log_level: The logging level for the stage's logger.
         """
         self.name = name
-        # Instantiate logger and console handler
         self.logger = BaseLogger(name, log_level)
-        self.console_handler = BaseConsole(console)
+        self.console = console or Console()
+        self.progress_manager = progress_manager
+
+    def print(self, message: str, **kwargs: Any) -> None:
+        """Print a message to the console."""
+        self.console.print(message, **kwargs)
 
     def execute(self, data: Any) -> Any:
         """

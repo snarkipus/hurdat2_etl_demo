@@ -4,9 +4,11 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
-from sqlalchemy import create_engine, text  # Import text
+from rich.panel import Panel
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+from .core import ProgressManager
 from .exceptions import (
     ETLError,
     ExtractionError,
@@ -19,11 +21,7 @@ from .exceptions import (
 from .extract.extract import ExtractStage
 from .load.load import LoadStage
 from .load.unit_of_work import SqlAlchemyUnitOfWork
-from .transform.models import Storm as PydanticStorm  # Import Pydantic Storm model
 from .transform.transform import TransformStage
-
-# Create a Rich Console instance to be shared across stages for unified output
-console = Console()
 
 app = typer.Typer()
 
@@ -48,7 +46,7 @@ def run_etl(
         help="Path to the output DuckDB database file.",
         file_okay=True,
         dir_okay=False,
-        writable=True,  # Check if the directory is writable
+        writable=True,
         resolve_path=True,
     ),
     log_level: str = typer.Option(
@@ -56,21 +54,30 @@ def run_etl(
         "--log-level",
         "-l",
         help="Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).",
-        case_sensitive=False,  # Allow lowercase level names
+        case_sensitive=False,
     ),
 ) -> None:
     """
     Runs the ETL pipeline to process HURDAT2 data and load it into a DuckDB database.
     """
+    # Create a clearly styled console for the entire pipeline
+    console = Console(highlight=False)  # Disable syntax highlighting for cleaner output
+
     # Determine the numeric log level from the string option
     numeric_log_level = getattr(logging, log_level.upper(), logging.INFO)
 
-    # Print initial messages to the console
-    console.print(f"Starting ETL process with log level {log_level.upper()}...")
-    console.print(f"Input file: [cyan]{input_file}[/]")
-    console.print(f"Output database: [cyan]{output_db}[/]")
-    # Log file location is fixed in BaseLogger (logs/pipeline.log)
-    console.print("Logging to: [cyan]logs/pipeline.log[/]")
+    # Print initial messages to the console with cleaner formatting
+    console.print(
+        Panel(
+            f"""[bold]Input file:[/bold] [cyan]{input_file}[/cyan]
+[bold]Output database:[/bold] [cyan]{output_db}[/cyan]
+[bold]Log level:[/bold] [cyan]{log_level.upper()}[/cyan]
+[bold]Log file:[/bold] [cyan]logs/pipeline.log[/cyan]""",
+            title="[bold]HURDAT2 ETL Pipeline[/bold]",
+            border_style="blue",
+            padding=(1, 2),
+        )
+    )
 
     # --- Delete existing output DB if it exists ---
     if output_db.exists():
@@ -78,124 +85,323 @@ def run_etl(
             f"[yellow]Output database file exists. Deleting {output_db}...[/]"
         )
         try:
-            output_db.unlink()  # Use unlink() for Path objects
+            output_db.unlink()
         except OSError as e:
             console.print(f"[bold red]Error deleting existing database file:[/]\n{e}")
             raise typer.Exit(code=1) from e
 
-    # --- Instantiate ETL Stages ---
-    # Pass the shared console and the determined log level to each stage.
-    # Each stage will configure its own logger via ETLStage -> BaseLogger.
-    extract_stage = ExtractStage(console=console, log_level=numeric_log_level)
-    transform_stage = TransformStage(console=console, log_level=numeric_log_level)
+    # Create the progress manager with our console
+    progress_manager = ProgressManager(console=console)
 
-    # Create a session factory specifically for this run, using the output path
+    # Create a session factory for this run
     engine = create_engine(f"duckdb:///{output_db}")
     dynamic_session_factory = sessionmaker(bind=engine)
-
-    # Create the UoW factory using the dynamically created session factory
     uow_factory = partial(SqlAlchemyUnitOfWork, session_factory=dynamic_session_factory)
-    load_stage = LoadStage(
-        uow_factory=uow_factory, console=console, log_level=numeric_log_level
-    )
 
     try:
+        # Start the progress directly
+        progress_manager.progress.start()
+
         # --- Execute Extract Stage ---
-        console.print("\n--- Running Extract Stage ---")
-        # Pass input data as expected by ExtractStage.execute
+        progress_manager.add_task("extract_stage", "[bold]Extract Stage[/bold]", 100)
+        extract_stage = ExtractStage(
+            console=console,
+            progress_manager=progress_manager,
+            log_level=numeric_log_level,
+        )
+
         extract_input = {"file_path": str(input_file)}
-        # The execute method handles logging start/end internally
+        progress_manager.update("extract_stage", advance=10)
         raw_data_iterator = extract_stage.execute(extract_input)
-        # Materialize the iterator into a list for the Transform stage
-        console.print("Materializing raw data from extractor...")
+
+        # Materialize the iterator
         raw_data_list = list(raw_data_iterator)
-        console.print(f"Materialized {len(raw_data_list)} raw data rows.")
-        # Note: Progress bar was handled during iteration by ExtractStage
+        progress_manager.update("extract_stage", advance=90)
+        progress_manager.complete_task(
+            "extract_stage", f"Extract: {len(raw_data_list):,} rows processed"
+        )
 
         # --- Execute Transform Stage ---
-        console.print("\n--- Running Transform Stage ---")
-        # Pass the materialized list to TransformStage.execute
+        progress_manager.add_task(
+            "transform_stage", "[bold]Transform Stage[/bold]", 100
+        )
+        transform_stage = TransformStage(
+            console=console,
+            progress_manager=progress_manager,
+            log_level=numeric_log_level,
+        )
+
+        progress_manager.update("transform_stage", advance=10)
         transformed_storms = transform_stage.execute(raw_data_list)
-        console.print(
-            f"Transform stage completed. Produced {len(transformed_storms)} "
-            f"storm objects (pre-deduplication)."
+        progress_manager.update("transform_stage", advance=90)
+        progress_manager.complete_task(
+            "transform_stage",
+            f"Transform: {len(transformed_storms):,} storms processed",
         )
 
         # --- Prepare Data for Load Stage ---
-        # De-duplicate storms one final time using storm_id as the key
-        # This ensures absolute uniqueness before loading.
-        unique_storms_dict: dict[str, PydanticStorm] = {
-            storm.storm_id: storm for storm in transformed_storms
-        }
+        # De-duplicate storms
+        unique_storms_dict = {storm.storm_id: storm for storm in transformed_storms}
         unique_storms_list = list(unique_storms_dict.values())
-        console.print(f"De-duplicated to {len(unique_storms_list)} unique storms.")
 
-        # Extract observations ONLY from the unique storms
+        # Extract observations from unique storms
         all_observations = [
             obs for storm in unique_storms_list for obs in storm.observations
         ]
         load_input = (unique_storms_list, all_observations)
-        console.print(
-            f"Prepared {len(all_observations)} observations from unique storms "
-            f"for loading."
-        )
 
         # --- Execute Load Stage ---
-        console.print("\n--- Running Load Stage ---")
-        # LoadStage.execute expects the tuple (storms, observations)
-        storm_count, observation_count = load_stage.execute(load_input)
-        console.print(
-            f"Load stage completed. Loaded {storm_count} storms and "
-            f"{observation_count} observations."
+        progress_manager.add_task("load_stage", "[bold]Load Stage[/bold]", 100)
+        load_stage = LoadStage(
+            uow_factory=uow_factory,
+            console=console,
+            progress_manager=progress_manager,
+            log_level=numeric_log_level,
         )
 
-        console.print("\n[bold green]ETL pipeline finished successfully.[/]")
+        progress_manager.update("load_stage", advance=10)
+        storm_count, observation_count = load_stage.execute(load_input)
+        progress_manager.update("load_stage", advance=90)
+        progress_manager.complete_task(
+            "load_stage",
+            f"Load: {storm_count:,} storms, {observation_count:,} observations",
+        )
+
+        # Stop the progress before continuing with other output
+        progress_manager.progress.stop()
+        console.print("[bold green]✓ ETL pipeline completed successfully[/bold green]")
 
         # --- Generate Summary Report ---
-        console.print("\n--- Generating Summary Report ---")
-        try:
-            # Use SQLAlchemy to connect for consistency
-            report_engine = create_engine(f"duckdb:///{output_db}")
-            report_session_factory = sessionmaker(bind=report_engine)
-            with report_session_factory() as report_session:
-                # Fetch counts safely using SQLAlchemy session
-                storm_count_result = report_session.execute(
-                    text("SELECT COUNT(*) FROM storms")
-                ).scalar_one_or_none()
-                total_storms = (
-                    storm_count_result if storm_count_result is not None else 0
-                )
-
-                obs_count_result = report_session.execute(
-                    text("SELECT COUNT(*) FROM observations")
-                ).scalar_one_or_none()
-                total_observations = (
-                    obs_count_result if obs_count_result is not None else 0
-                )
-
-                # Fetch date range safely using SQLAlchemy session
-                date_range_result = report_session.execute(
-                    text("SELECT MIN(date), MAX(date) FROM observations")
-                ).fetchone()
-
-                console.print(f"Total storms loaded: {total_storms}")
-                console.print(f"Total observations loaded: {total_observations}")
-
-                # Check if date range was fetched and contains valid dates
-                if date_range_result and date_range_result[0] and date_range_result[1]:
-                    console.print(
-                        f"Observation date range: {date_range_result[0]} to "
-                        f"{date_range_result[1]}"
+        with console.status(
+            "[bold cyan]✨ Generating final summary report...[/bold cyan]"
+        ):
+            try:
+                # Use SQLAlchemy to connect for consistency
+                report_engine = create_engine(f"duckdb:///{output_db}")
+                report_session_factory = sessionmaker(bind=report_engine)
+                with report_session_factory() as report_session:
+                    # Fetch counts safely using SQLAlchemy session
+                    storm_count_result = report_session.execute(
+                        text("SELECT COUNT(*) FROM storms")
+                    ).scalar_one_or_none()
+                    total_storms = (
+                        storm_count_result if storm_count_result is not None else 0
                     )
-                else:
-                    console.print(
-                        "Observation date range: Not available (no observations found?)"
+
+                    obs_count_result = report_session.execute(
+                        text("SELECT COUNT(*) FROM observations")
+                    ).scalar_one_or_none()
+                    total_observations = (
+                        obs_count_result if obs_count_result is not None else 0
                     )
-        except Exception as report_err:
-            console.print(
-                f"[bold yellow]Warning: Could not generate summary report:[/]\n"
-                f"{report_err}"
-            )
+
+                    # Fetch date range safely using SQLAlchemy session
+                    date_range_result = report_session.execute(
+                        text("SELECT MIN(date), MAX(date) FROM observations")
+                    ).fetchone()
+
+                    # Get basin counts
+                    basin_counts = report_session.execute(
+                        text(
+                            "SELECT basin, COUNT(*) FROM storms GROUP BY basin ORDER BY COUNT(*) DESC"
+                        )
+                    ).fetchall()
+
+                    # Group storms by actual decade (1850s, 1860s, etc)
+                    decade_query = text("""
+                        WITH decades AS (
+                            SELECT 
+                                CAST(FLOOR(year / 10) * 10 AS INTEGER) AS decade_start,
+                                COUNT(*) AS storm_count
+                            FROM 
+                                storms
+                            GROUP BY 
+                                decade_start
+                            ORDER BY 
+                                decade_start
+                        )
+                        SELECT 
+                            decade_start,
+                            storm_count
+                        FROM 
+                            decades
+                    """)
+                    decade_stats = report_session.execute(decade_query).fetchall()
+
+                    # Get max wind speeds distribution
+                    max_wind_query = text("""
+                        WITH storm_max_winds AS (
+                            SELECT 
+                                s.storm_id,
+                                s.name,
+                                MAX(o.max_wind) AS max_wind
+                            FROM 
+                                storms s
+                            JOIN 
+                                observations o ON s.storm_id = o.storm_id
+                            GROUP BY 
+                                s.storm_id, s.name
+                        )
+                        SELECT 
+                            CASE 
+                                WHEN max_wind < 64 THEN 'Tropical Storm'
+                                WHEN max_wind >= 64 AND max_wind < 83 THEN 'Category 1'
+                                WHEN max_wind >= 83 AND max_wind < 96 THEN 'Category 2'
+                                WHEN max_wind >= 96 AND max_wind < 113 THEN 'Category 3'
+                                WHEN max_wind >= 113 AND max_wind < 137 THEN 'Category 4'
+                                WHEN max_wind >= 137 THEN 'Category 5'
+                                ELSE 'Unknown'
+                            END AS intensity_category,
+                            COUNT(*) AS count
+                        FROM 
+                            storm_max_winds
+                        GROUP BY 
+                            intensity_category
+                        ORDER BY 
+                            CASE 
+                                WHEN intensity_category = 'Tropical Storm' THEN 1
+                                WHEN intensity_category = 'Category 1' THEN 2
+                                WHEN intensity_category = 'Category 2' THEN 3
+                                WHEN intensity_category = 'Category 3' THEN 4
+                                WHEN intensity_category = 'Category 4' THEN 5
+                                WHEN intensity_category = 'Category 5' THEN 6
+                                ELSE 0
+                            END
+                    """)
+                    intensity_stats = report_session.execute(max_wind_query).fetchall()
+
+                    # Get longest-duration storms
+                    longest_storms_query = text("""
+                        WITH storm_durations AS (
+                            SELECT 
+                                s.storm_id, 
+                                s.name,
+                                s.year,
+                                CAST(EXTRACT(EPOCH FROM (MAX(o.date) - MIN(o.date))) / 86400 AS FLOAT) AS duration_days
+                            FROM 
+                                storms s
+                            JOIN 
+                                observations o ON s.storm_id = o.storm_id
+                            GROUP BY 
+                                s.storm_id, s.name, s.year
+                        )
+                        SELECT 
+                            name, 
+                            year,
+                            duration_days
+                        FROM 
+                            storm_durations
+                        ORDER BY 
+                            duration_days DESC
+                        LIMIT 5
+                    """)
+                    longest_storms = report_session.execute(
+                        longest_storms_query
+                    ).fetchall()
+
+                    # Create a more visually appealing summary panel with sections
+                    summary_text = f"""[bold green]HURDAT2 DATABASE SUMMARY[/bold green]
+
+[bold]Basic Statistics[/bold]
+    [bold]Total storms:[/bold]        [cyan]{total_storms:,}[/cyan]
+    [bold]Total observations:[/bold]  [cyan]{total_observations:,}[/cyan]"""
+
+                    # Add date range if available
+                    if (
+                        date_range_result
+                        and date_range_result[0]
+                        and date_range_result[1]
+                    ):
+                        summary_text += f"""
+    [bold]Observation range:[/bold]   [cyan]{date_range_result[0]}[/cyan] to [cyan]{date_range_result[1]}[/cyan]"""
+                    else:
+                        summary_text += """
+    [bold]Observation range:[/bold]   [yellow]Not available[/yellow]"""
+
+                    # Add basin distribution if available
+                    if basin_counts:
+                        summary_text += """
+
+[bold]Basin Distribution[/bold]"""
+                        for basin, count in basin_counts:
+                            summary_text += f"""
+    [magenta]{basin}:[/magenta] {count:,} storms"""
+
+                    # Add decade distribution
+                    if decade_stats:
+                        summary_text += """
+
+[bold]Storms by Decade[/bold]"""
+                        # Group decades into larger blocks (combine years for cleaner display)
+                        by_larger_groups: dict[int, list[tuple[int, int]]] = {}
+                        for decade, count in decade_stats:
+                            # Group into 30-year periods
+                            period = (decade // 30) * 30
+                            if period not in by_larger_groups:
+                                by_larger_groups[period] = []
+                            by_larger_groups[period].append((decade, count))
+
+                        # Display decade stats grouped for better readability
+                        for period in sorted(by_larger_groups.keys()):
+                            decades_in_period = by_larger_groups[period]
+                            for decade, count in decades_in_period:
+                                summary_text += f"""
+    [yellow]{decade}s:[/yellow] {count:,} storms"""
+
+                    # Add intensity categories
+                    if intensity_stats:
+                        summary_text += """
+
+[bold]Hurricane Intensity Distribution[/bold]"""
+                        for category, count in intensity_stats:
+                            # Color-code categories based on severity
+                            if category == "Tropical Storm":
+                                color = "blue"
+                            elif category == "Category 1":
+                                color = "green"
+                            elif category == "Category 2":
+                                color = "yellow"
+                            elif category == "Category 3":
+                                color = "orange"
+                            elif category == "Category 4" or category == "Category 5":
+                                color = "red"
+                            else:
+                                color = "white"
+
+                            summary_text += f"""
+    [{color}]{category}:[/{color}] {count:,} storms"""
+
+                    # Add longest lasting storms
+                    if longest_storms:
+                        summary_text += """
+
+[bold]Longest-Duration Storms[/bold]"""
+                        for name, year, duration in longest_storms:
+                            # Handle unnamed storms
+                            storm_name = (
+                                name
+                                if name and name.strip() != "UNNAMED"
+                                else "UNNAMED"
+                            )
+                            summary_text += f"""
+    [cyan]{storm_name} ({year}):[/cyan] {duration:.1f} days"""
+
+                    # Print the summary panel with expanded sizing
+                    console.print(
+                        Panel(
+                            summary_text,
+                            title="[bold]✅ HURDAT2 ETL Summary[/bold]",
+                            border_style="green",
+                            padding=(1, 2),
+                            expand=False,
+                            width=90,
+                        )
+                    )
+
+            except Exception as report_err:
+                console.print(
+                    f"[bold yellow]Warning: Could not generate summary report:[/]\n{report_err}"
+                )
 
     except ETLError as e:
         # Determine stage name based on exception type
@@ -210,14 +416,13 @@ def run_etl(
             stage_name = "transform"  # Validation happens during transform
 
         # Log the error using the logger associated with the determined stage
-        # Use the package logger name now
         logger = logging.getLogger(f"etl_pipeline.{stage_name}")
         logger.error(f"ETL Error occurred in stage '{stage_name}': {e}", exc_info=True)
         console.print(f"\n[bold red]ETL Error in stage '{stage_name}':[/] {e}")
         raise typer.Exit(code=1) from e
     except Exception as e:
         # Log unexpected errors using a generic logger name (cli logger)
-        logger = logging.getLogger("etl_pipeline.cli")  # Use package logger name
+        logger = logging.getLogger("etl_pipeline.cli")
         logger.error(f"An unexpected error occurred: {e}", exc_info=True)
         console.print(f"\n[bold red]An unexpected error occurred:[/]\n{e}")
         raise typer.Exit(code=1) from e
