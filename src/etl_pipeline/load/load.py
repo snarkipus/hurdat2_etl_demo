@@ -164,7 +164,8 @@ class LoadStage(ETLStage):
             total_observations = len(observations_list)
 
             self.logger.info(
-                f"Starting to load {total_storms} storms and {total_observations} observations"
+                f"Starting to load {total_storms} storms and "
+                f"{total_observations} observations"
             )
 
             # Use the Unit of Work to manage the database session
@@ -209,10 +210,13 @@ class LoadStage(ETLStage):
 
                     # Update progress in batches
                     if self.progress_manager and batch_count >= batch_size:
+                        description = (
+                            f"Loading storms: {storm_count:,}/{total_storms:,}"
+                        )
                         self.progress_manager.update(
                             "load_storms",
                             advance=batch_count,
-                            description=f"Loading storms: {storm_count:,}/{total_storms:,}",
+                            description=description,
                         )
                         batch_count = 0
 
@@ -252,7 +256,8 @@ class LoadStage(ETLStage):
                         observation_data["geom"] = f"POINT({longitude} {latitude})"
                     else:
                         self.logger.warning(
-                            f"Missing lat/lon for observation {obs.date}, cannot create geom."
+                            f"Missing lat/lon for observation {obs.date}, "
+                            f"cannot create geom."
                         )
                         observation_data["geom"] = None
 

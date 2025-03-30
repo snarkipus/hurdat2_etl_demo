@@ -202,9 +202,14 @@ def run_etl(
 
                     # Get basin counts
                     basin_counts = report_session.execute(
-                        text(
-                            "SELECT basin, COUNT(*) FROM storms GROUP BY basin ORDER BY COUNT(*) DESC"
-                        )
+                        text("""
+                            SELECT 
+                                basin, 
+                                COUNT(*) 
+                            FROM storms 
+                            GROUP BY basin 
+                            ORDER BY COUNT(*) DESC
+                        """)
                     ).fetchall()
 
                     # Group storms by actual decade (1850s, 1860s, etc)
@@ -248,7 +253,8 @@ def run_etl(
                                 WHEN max_wind >= 64 AND max_wind < 83 THEN 'Category 1'
                                 WHEN max_wind >= 83 AND max_wind < 96 THEN 'Category 2'
                                 WHEN max_wind >= 96 AND max_wind < 113 THEN 'Category 3'
-                                WHEN max_wind >= 113 AND max_wind < 137 THEN 'Category 4'
+                                WHEN max_wind >= 113 AND max_wind < 137 THEN
+                                    'Category 4'
                                 WHEN max_wind >= 137 THEN 'Category 5'
                                 ELSE 'Unknown'
                             END AS intensity_category,
@@ -277,7 +283,12 @@ def run_etl(
                                 s.storm_id, 
                                 s.name,
                                 s.year,
-                                CAST(EXTRACT(EPOCH FROM (MAX(o.date) - MIN(o.date))) / 86400 AS FLOAT) AS duration_days
+                                CAST(
+                                    EXTRACT(
+                                        EPOCH FROM (MAX(o.date) - MIN(o.date))
+                                    ) / 86400 
+                                    AS FLOAT
+                                ) AS duration_days
                             FROM 
                                 storms s
                             JOIN 
@@ -313,7 +324,8 @@ def run_etl(
                         and date_range_result[1]
                     ):
                         summary_text += f"""
-    [bold]Observation range:[/bold]   [cyan]{date_range_result[0]}[/cyan] to [cyan]{date_range_result[1]}[/cyan]"""
+    [bold]Observation range:[/bold]   [cyan]{date_range_result[0]}[/cyan] to 
+    [cyan]{date_range_result[1]}[/cyan]"""
                     else:
                         summary_text += """
     [bold]Observation range:[/bold]   [yellow]Not available[/yellow]"""
@@ -332,7 +344,8 @@ def run_etl(
                         summary_text += """
 
 [bold]Storms by Decade[/bold]"""
-                        # Group decades into larger blocks (combine years for cleaner display)
+                        # Group decades into larger blocks
+                        # (combine years for cleaner display)
                         by_larger_groups: dict[int, list[tuple[int, int]]] = {}
                         for decade, count in decade_stats:
                             # Group into 30-year periods
@@ -400,7 +413,8 @@ def run_etl(
 
             except Exception as report_err:
                 console.print(
-                    f"[bold yellow]Warning: Could not generate summary report:[/]\n{report_err}"
+                    "[bold yellow]Warning: Could not generate summary report:[/]\n"
+                    f"{report_err}"
                 )
 
     except ETLError as e:

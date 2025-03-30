@@ -126,15 +126,15 @@
 **Purpose**: Facilitates user interaction and provides transparency during pipeline execution.
 
 **Tasks**:
-- [ ] Implement the CLI entry point in `src/cli.py` using Typer, with commands to specify input CSV and output DuckDB paths (e.g., `run-etl --input file.csv --output db.duckdb`).
-- [ ] Integrate the extract, transform, and load functions into the CLI workflow (potentially as Command objects).
-- [ ] Add progress bars using Rich for each stage (e.g., parsing storms, transforming records, loading data).
-- [ ] Set up structured logging to a file in `logs/` using Python’s `logging` module, capturing errors and stage completion details.
-- [ ] Write tests in `tests/integration/test_cli.py` to verify:
+- [x] Implement the CLI entry point in `src/cli.py` using Typer, with commands to specify input CSV and output DuckDB paths (e.g., `run-etl --input file.csv --output db.duckdb`).
+- [x] Integrate the extract, transform, and load functions into the CLI workflow (potentially as Command objects).
+- [x] Add progress bars using Rich for each stage (e.g., parsing storms, transforming records, loading data).
+- [x] Set up structured logging to a file in `logs/` using Python’s `logging` module, capturing errors and stage completion details.
+- [x] Write tests in `tests/integration/test_cli.py` to verify:
   - Command execution with valid inputs.
   - Progress display and log file creation.
   - Error handling for invalid inputs.
-- [ ] Implement summary report generation after loading, querying DuckDB for stats (e.g., number of storms, track points, date range) and displaying via Rich.
+- [x] Implement summary report generation after loading, querying DuckDB for stats (e.g., number of storms, track points, date range) and displaying via Rich.
 
 ---
 
