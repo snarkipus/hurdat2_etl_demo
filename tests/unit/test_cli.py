@@ -6,7 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from etl_pipeline.cli import app
-from etl_pipeline.exceptions import LoadError
+from etl_pipeline.exceptions import ETLError, LoadError
 from etl_pipeline.transform.models import Observation, Point, Storm
 from etl_pipeline.transform.transform import TransformStage
 from tests.unit.transform.test_transform import (
@@ -32,6 +32,7 @@ def cli_boundary(mocker, tmp_path):
     load.execute.return_value = (0, 0)  # Deliberately not an acceptance oracle.
     mocker.patch("etl_pipeline.cli.create_engine")
     mocker.patch("etl_pipeline.cli.initialize_database")
+    mocker.patch("etl_pipeline.cli.verify_persisted_dataset")
     mocker.patch("etl_pipeline.cli.ProgressManager")
     session = mocker.patch("etl_pipeline.cli.sessionmaker").return_value
     report_result = session.return_value.execute.return_value
@@ -41,8 +42,9 @@ def cli_boundary(mocker, tmp_path):
     return source, extract, transformed, load
 
 
-def test_last_wins_and_exact_flattened_loader_inputs(cli_boundary, tmp_path):
+def test_last_wins_and_exact_flattened_loader_inputs(cli_boundary, tmp_path, mocker):
     source, extract, transformed, load = cli_boundary
+    verify = mocker.patch("etl_pipeline.cli.verify_persisted_dataset")
     extract.execute.return_value = [
         ["unrecognized before first header"],
         SAMPLE_HEADER_1,
@@ -93,13 +95,15 @@ def test_last_wins_and_exact_flattened_loader_inputs(cli_boundary, tmp_path):
     ]
     assert transformed.spy_return == storms
     load.execute.assert_called_once_with((storms, [revised_obs, other_obs]))
+    assert verify.call_args.args[1:] == (2, 2)
 
 
 @pytest.mark.parametrize(
     "rows", [[], [["unrecognized"], SAMPLE_HEADER_1, INVALID_OBS_ROW, ["malformed"]]]
 )
-def test_zero_accepted_inputs(cli_boundary, tmp_path, rows):
+def test_zero_accepted_inputs(cli_boundary, tmp_path, rows, mocker):
     source, extract, transformed, load = cli_boundary
+    verify = mocker.patch("etl_pipeline.cli.verify_persisted_dataset")
     extract.execute.return_value = rows
     result = CliRunner().invoke(
         app, ["--input", str(source), "--output", str(tmp_path / "empty.duckdb")]
@@ -107,6 +111,7 @@ def test_zero_accepted_inputs(cli_boundary, tmp_path, rows):
     assert result.exit_code == 0, result.output
     assert transformed.spy_return == []
     load.execute.assert_called_once_with(([], []))
+    assert verify.call_args.args[1:] == (0, 0)
 
 
 def test_migration_failure_prevents_loading_and_disposes(
@@ -142,6 +147,34 @@ def test_load_failure_disposes_without_starting_report(cli_boundary, mocker, tmp
     assert "load failed" in result.output
     create_engine.assert_called_once()
     create_engine.return_value.dispose.assert_called_once()
+
+
+def test_verification_uses_snapshot_and_failure_prevents_success_and_report(
+    cli_boundary, mocker, tmp_path
+):
+    source, extract, _, load = cli_boundary
+    extract.execute.return_value = [SAMPLE_HEADER_1, SAMPLE_OBS_1_1]
+
+    def misleading_load(data):
+        data[0].clear()
+        data[1].clear()
+        return (999, 999)
+
+    load.execute.side_effect = misleading_load
+    verify = mocker.patch(
+        "etl_pipeline.cli.verify_persisted_dataset",
+        side_effect=ETLError("Persisted count mismatch"),
+    )
+    report = mocker.patch("etl_pipeline.cli._report_session")
+    result = CliRunner().invoke(
+        app, ["--input", str(source), "--output", str(tmp_path / "failed.duckdb")]
+    )
+    assert result.exit_code == 1
+    assert verify.call_args.args[1:] == (1, 1)
+    assert "Persisted count mismatch" in result.output
+    assert "completed successfully" not in result.output
+    report.assert_not_called()
+    verify.call_args.args[0].dispose.assert_called_once()
 
 
 @pytest.mark.parametrize("report_failure", [None, "factory", "query"])

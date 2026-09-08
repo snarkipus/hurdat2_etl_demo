@@ -25,6 +25,7 @@ from .exceptions import (
 from .extract.extract import ExtractStage
 from .load.load import LoadStage
 from .load.unit_of_work import SqlAlchemyUnitOfWork
+from .load.verification import verify_persisted_dataset
 from .migrations import initialize_database
 from .transform.transform import TransformStage
 
@@ -199,7 +200,10 @@ def run_etl(
         )
 
         progress_manager.update("load_stage", advance=10)
+        expected_storms = len(unique_storms_list)
+        expected_observations = len(all_observations)
         storm_count, observation_count = load_stage.execute(load_input)
+        verify_persisted_dataset(engine, expected_storms, expected_observations)
         progress_manager.update("load_stage", advance=90)
         progress_manager.complete_task(
             "load_stage",
