@@ -1,10 +1,10 @@
 """Integration tests for the Load stage, focusing on database interactions."""
 
 # Removed Alembic imports
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
 from etl_pipeline.load.load import LoadStage
@@ -25,16 +25,11 @@ def in_memory_db_engine():
     """Creates an in-memory DuckDB engine and creates tables from metadata."""
     engine = create_engine("duckdb:///:memory:")
 
-    # Create tables directly from SQLAlchemy metadata
-    Base.metadata.create_all(engine)
-    print("Tables created from metadata.")  # Debug print
-
-    yield engine
-
-    # Teardown: Drop all tables after the test
-    print("Dropping tables from metadata.")  # Debug print
-    Base.metadata.drop_all(engine)
-    engine.dispose()
+    try:
+        Base.metadata.create_all(engine)
+        yield engine
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture
@@ -92,11 +87,40 @@ def sample_integration_data():
     return [storm1], [obs1, obs2]
 
 
+def test_load_preserves_utc_in_non_utc_session(
+    session_factory, integration_load_stage, integration_uow, sample_integration_data
+):
+    """Aware source instants must not be cast to session-local wall time."""
+
+    @event.listens_for(session_factory, "after_begin")
+    def set_non_utc_timezone(session, transaction, connection):
+        connection.execute(text("SET TimeZone = 'America/New_York'"))
+        assert (
+            connection.execute(text("SELECT current_setting('TimeZone')")).scalar_one()
+            == "America/New_York"
+        )
+
+    storms, observations = sample_integration_data
+    observations = [
+        obs.model_copy(update={"date": obs.date.replace(tzinfo=UTC)})
+        for obs in observations
+    ]
+    assert integration_load_stage.execute((storms, observations)) == (1, 2)
+
+    with integration_uow as uow:
+        assert uow.execute(
+            "SELECT date, typeof(date) FROM observations ORDER BY date"
+        ).all() == [
+            (datetime(2024, 1, 1, 12), "TIMESTAMP"),
+            (datetime(2024, 1, 1, 18), "TIMESTAMP"),
+        ]
+
+
 def test_load_and_spatial_query(
     integration_load_stage, integration_uow, sample_integration_data
 ):
     """
-    Test loading data and performing a basic spatial query (ST_Distance).
+    Test loading data and interpreting known longitude/latitude point ordinates.
     """
     storms, observations = sample_integration_data
     input_data = (storms, observations)
@@ -114,32 +138,13 @@ def test_load_and_spatial_query(
         # Use the private method directly for testing setup within this context
         integration_load_stage._load_spatial_extension(uow)
 
-        # Query using ST_Point and ST_Distance
-        # Note: DuckDB ST_Distance returns distance in meters by default
-        # Distance between (25N, 75W) and (25N, 76W) is approx 1 degree longitude
-        # At 25N latitude, 1 degree longitude is approx cos(25deg) * 111.32 km
-        # cos(25 deg) ~= 0.9063; Distance ~= 0.9063 * 111320 m ~= 100888 m
-        # Use ST_Distance_Spheroid for geodesic distance calculation
+        # WKT X/Y are longitude/latitude. No geodesic function (whose axis
+        # convention may differ) is needed to establish these known points.
         query = """
-        SELECT ST_Distance_Spheroid(
-                   ST_GeomFromText(o1.geom),
-                   ST_GeomFromText(o2.geom)
-               )
-        FROM observations o1, observations o2
-        WHERE o1.date = :date1 AND o2.date = :date2
+        SELECT ST_X(ST_GeomFromText(geom)), ST_Y(ST_GeomFromText(geom))
+        FROM observations ORDER BY date
         """
-        params = {"date1": observations[0].date, "date2": observations[1].date}
-        result = uow.execute(query, params)
-        distance = result.scalar_one_or_none()
-
-        assert distance is not None
-        # Check if the distance is approximately correct (allow some tolerance)
-        # Use the more accurate distance calculated by DuckDB itself
-        expected_distance_m = 111623.2  # More accurate distance in meters
-        # Correct assertion: check difference against tolerance
-        assert abs(distance - expected_distance_m) < 1000.0, (
-            f"Distance {distance} not within 1km tolerance of {expected_distance_m}"
-        )
+        assert uow.execute(query).all() == [(-75.0, 25.0), (-76.0, 25.0)]
 
         # Verify WKT was stored correctly
         query_geom = "SELECT geom FROM observations WHERE date = :date1"

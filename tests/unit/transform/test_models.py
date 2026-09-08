@@ -74,6 +74,12 @@ class TestPoint:
         assert point.latitude == 29.1
         assert point.longitude == -90.2
 
+    def test_eastern_longitude_is_not_wrapped(self):
+        """Normalization is unchanged; geographic acceptance is a separate gate."""
+        point = Point(latitude="25.0N", longitude="270E")
+        assert point.longitude == 270.0
+        assert point.latitude == 25.0
+
     def test_invalid_coordinate_format_instantiation(self):
         """Test Point instantiation with invalid coordinate formats."""
         invalid_formats = [

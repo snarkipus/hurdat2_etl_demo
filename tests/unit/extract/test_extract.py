@@ -192,3 +192,49 @@ class TestExtractStage:
         input_data = {"file_path": 123}  # Not a string
         with pytest.raises(ValueError, match="'file_path' value must be a string"):
             list(extract_stage.execute(input_data))
+
+    def test_ordered_trimmed_fields(self, extract_stage, tmp_path):
+        source = tmp_path / "source.txt"
+        # Whitespace trimming is per field; CSV quoting uses the reader's
+        # existing default (no whitespace before an opening quote).
+        source.write_text(
+            ' AL092021 , IDA , 40 , \n20210826, 1200 , , TD,"quoted, field" \n',
+            encoding="utf-8",
+        )
+        assert list(extract_stage.execute({"file_path": str(source)})) == [
+            ["AL092021", "IDA", "40", ""],
+            ["20210826", "1200", "", "TD", "quoted, field"],
+        ]
+
+    def test_utf8_decoding_failure(self, extract_stage, tmp_path):
+        source = tmp_path / "invalid-utf8.txt"
+        source.write_bytes(b"AL092021,IDA,40,\n\xff\n")
+        with pytest.raises(ExtractionError, match=str(source)) as exc_info:
+            list(extract_stage.execute({"file_path": str(source)}))
+        assert isinstance(exc_info.value.__cause__, UnicodeDecodeError)
+        extract_stage.logger.error.assert_called()
+
+    @pytest.mark.parametrize(
+        "error, diagnostic",
+        [
+            (OSError("Read interrupted"), "OS error reading file"),
+            (csv.Error("Invalid CSV"), "Error parsing CSV file"),
+        ],
+    )
+    def test_failure_during_iteration(
+        self, extract_stage, tmp_path, mocker, error, diagnostic
+    ):
+        source = tmp_path / "source.txt"
+        source.write_text("AL092021,IDA,40,\n", encoding="utf-8")
+
+        def interrupted_reader(_file):
+            yield ["AL092021", "IDA", "40", ""]
+            raise error
+
+        reader = mocker.patch("csv.reader", side_effect=interrupted_reader)
+        rows = extract_stage.execute({"file_path": str(source)})
+        assert next(rows) == ["AL092021", "IDA", "40", ""]
+        with pytest.raises(ExtractionError, match=diagnostic) as exc_info:
+            next(rows)
+        assert exc_info.value.__cause__ is error
+        assert reader.call_args.args[0].closed
