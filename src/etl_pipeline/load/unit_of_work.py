@@ -17,8 +17,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, Result
 from sqlalchemy.orm import Session, sessionmaker
 
-# Import Base from models to access metadata
-from etl_pipeline.load.models import Base, Observation, Storm
+from etl_pipeline.load.models import Observation, Storm
 from etl_pipeline.load.repository import SqlAlchemyRepository
 
 logger = logging.getLogger(__name__)
@@ -107,22 +106,16 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
         self.session: Session | None = None  # Session initialized in __enter__
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
-        """Start session, create schema if needed, init repositories."""
+        """Start a session on an explicitly initialized schema and repositories."""
         self.session = self.session_factory()
-        # Ensure the engine is available for create_all
-        engine = self.session.bind
-        if not isinstance(engine, Engine):
-            # This case should ideally not happen if session_factory is
-            # configured correctly
-            raise TypeError("Session is not bound to a valid SQLAlchemy Engine.")
-
-        # Create tables based on the metadata defined in models.py
-        logger.debug("Ensuring database schema exists...")
-        Base.metadata.create_all(engine)
-        logger.debug("Database schema check complete.")
-
-        self.storms = SqlAlchemyRepository(self.session, Storm)
-        self.observations = SqlAlchemyRepository(self.session, Observation)
+        try:
+            if not isinstance(self.session.bind, Engine):
+                raise TypeError("Session is not bound to a valid SQLAlchemy Engine.")
+            self.storms = SqlAlchemyRepository(self.session, Storm)
+            self.observations = SqlAlchemyRepository(self.session, Observation)
+        except BaseException as error:
+            self.__exit__(type(error), error, error.__traceback__)
+            raise
         return self
 
     def __exit__(
@@ -132,9 +125,32 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
         traceback: TracebackType | None,
     ) -> None:
         """Commits or rolls back the session and closes it."""
-        if self.session:  # Ensure session was initialized
-            super().__exit__(exc_type, exc_val, traceback)
-            self.session.close()
+        if self.session is None:
+            return
+        primary_error = exc_val
+        try:
+            if primary_error is None:
+                try:
+                    self.commit()
+                except BaseException as error:
+                    primary_error = error
+                    raise
+        finally:
+            try:
+                if primary_error is not None:
+                    try:
+                        self.rollback()
+                    except BaseException as error:
+                        primary_error.add_note(f"Session rollback failed: {error}")
+            finally:
+                try:
+                    self.session.close()
+                except BaseException as error:
+                    if primary_error is None:
+                        raise
+                    primary_error.add_note(f"Session close failed: {error}")
+                finally:
+                    self.session = None
 
     def commit(self) -> None:
         """Commits the current SQLAlchemy session."""

@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,19 +22,18 @@ LOG_FILE = Path("logs/pipeline.log")
 
 
 @pytest.fixture(autouse=True)
-def cli_engines(monkeypatch):
-    """Own engines created by in-process CLI tests until runtime owns disposal."""
+def cli_engines(monkeypatch, mocker):
+    """Observe runtime disposal without closing engines on its behalf."""
     engines = []
 
     def tracked_create_engine(*args, **kwargs):
         engine = create_engine(*args, **kwargs)
+        mocker.spy(engine, "dispose")
         engines.append(engine)
         return engine
 
     monkeypatch.setattr("etl_pipeline.cli.create_engine", tracked_create_engine)
-    yield engines
-    for engine in engines:
-        engine.dispose()
+    return engines
 
 
 def test_run_etl_success(tmp_path, cli_engines):
@@ -87,15 +89,48 @@ def test_run_etl_success(tmp_path, cli_engines):
         f"Output database file not created at {output_db_path}"
     )
 
-    # Close both CLI pools before independently reopening the committed file.
+    # Runtime must release both pools, without test-assisted finalization.
+    assert len(cli_engines) == 2
     for engine in cli_engines:
-        engine.dispose()
+        engine.dispose.assert_called_once_with()
+        assert engine.pool.checkedout() == 0
+    assert not Path(f"{output_db_path}.wal").exists()
+    # A separate process cannot borrow a pooled writer or its in-memory state.
+    reopened = subprocess.run(  # noqa: S603 - fixed Python code and test-owned path
+        [
+            sys.executable,
+            "-c",
+            "import duckdb, sys; "
+            "c = duckdb.connect(sys.argv[1], read_only=True); "
+            "assert c.execute('SELECT count(*) FROM observations').fetchone() == (34,); "
+            "assert c.execute('SELECT version_num FROM alembic_version').fetchone() "
+            "== ('6accd1b8062d',); c.close()",
+            str(output_db_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        # This probe runs only third-party DuckDB, not application code. Avoid
+        # pytest-cov starting a second collector without config in the isolated cwd.
+        env={
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith("COV_CORE_")
+        },
+    )
+    assert reopened.returncode == 0, reopened.stderr
 
     # 3. Assert source-derived content, not summary/loader return values.
     engine = create_engine(f"duckdb:///{output_db_path}")
     try:
         test_session_factory = sessionmaker(bind=engine)
         with test_session_factory() as session:
+            assert (
+                session.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "6accd1b8062d"
+            )
             # Use text() for raw SQL execution via SQLAlchemy session
             storm_count_result = session.execute(
                 text("SELECT COUNT(*) FROM storms")

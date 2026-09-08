@@ -1,4 +1,7 @@
 import logging
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 
@@ -6,7 +9,8 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from .core import ProgressManager
 from .exceptions import (
@@ -21,9 +25,41 @@ from .exceptions import (
 from .extract.extract import ExtractStage
 from .load.load import LoadStage
 from .load.unit_of_work import SqlAlchemyUnitOfWork
+from .migrations import initialize_database
 from .transform.transform import TransformStage
 
 app = typer.Typer()
+
+
+def _dispose_engine(engine: Engine) -> None:
+    """Close the owned pool without replacing an already active failure."""
+    primary_error = sys.exception()
+    try:
+        engine.dispose()
+    except Exception as error:
+        if primary_error is None:
+            raise
+        primary_error.add_note(f"Database engine disposal failed: {error}")
+
+
+@contextmanager
+def _report_session(output_db: Path) -> Iterator[Session]:
+    """Own summary resources without masking a query failure during cleanup."""
+    engine = create_engine(f"duckdb:///{output_db}")
+    try:
+        session = sessionmaker(bind=engine)()
+        try:
+            yield session
+        finally:
+            primary_error = sys.exception()
+            try:
+                session.close()
+            except Exception as error:
+                if primary_error is None:
+                    raise
+                primary_error.add_note(f"Report session close failed: {error}")
+    finally:
+        _dispose_engine(engine)
 
 
 @app.command()
@@ -95,10 +131,13 @@ def run_etl(
 
     # Create a session factory for this run
     engine = create_engine(f"duckdb:///{output_db}")
-    dynamic_session_factory = sessionmaker(bind=engine)
-    uow_factory = partial(SqlAlchemyUnitOfWork, session_factory=dynamic_session_factory)
-
     try:
+        with engine.begin() as connection:
+            initialize_database(connection)
+        dynamic_session_factory = sessionmaker(bind=engine)
+        uow_factory = partial(
+            SqlAlchemyUnitOfWork, session_factory=dynamic_session_factory
+        )
         # Start the progress directly
         progress_manager.progress.start()
 
@@ -177,9 +216,7 @@ def run_etl(
         ):
             try:
                 # Use SQLAlchemy to connect for consistency
-                report_engine = create_engine(f"duckdb:///{output_db}")
-                report_session_factory = sessionmaker(bind=report_engine)
-                with report_session_factory() as report_session:
+                with _report_session(output_db) as report_session:
                     # Fetch counts safely using SQLAlchemy session
                     storm_count_result = report_session.execute(
                         text("SELECT COUNT(*) FROM storms")
@@ -434,12 +471,17 @@ def run_etl(
         logger.error(f"ETL Error occurred in stage '{stage_name}': {e}", exc_info=True)
         console.print(f"\n[bold red]ETL Error in stage '{stage_name}':[/] {e}")
         raise typer.Exit(code=1) from e
+
     except Exception as e:
         # Log unexpected errors using a generic logger name (cli logger)
         logger = logging.getLogger("etl_pipeline.cli")
         logger.error(f"An unexpected error occurred: {e}", exc_info=True)
         console.print(f"\n[bold red]An unexpected error occurred:[/]\n{e}")
         raise typer.Exit(code=1) from e
+    finally:
+        # Closing the last DuckDB connection checkpoints committed state; no
+        # separate CHECKPOINT is needed for this single-writer lifecycle.
+        _dispose_engine(engine)
 
 
 # This allows running the script directly for debugging, but the primary

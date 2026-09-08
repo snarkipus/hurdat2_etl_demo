@@ -129,3 +129,67 @@ def test_uow_raises_if_used_outside_context(mock_session_factory):
         uow_instance.rollback()
     with pytest.raises(RuntimeError, match="Session not initialized"):
         uow_instance.execute("SELECT 1")
+
+
+def test_partial_entry_releases_session(uow, mock_session, mocker):
+    error = RuntimeError("repository initialization failed")
+    mocker.patch(
+        "etl_pipeline.load.unit_of_work.SqlAlchemyRepository", side_effect=error
+    )
+    with pytest.raises(RuntimeError) as raised:
+        with uow:
+            pytest.fail("entry must fail")
+    assert raised.value is error
+    mock_session.rollback.assert_called_once()
+    mock_session.close.assert_called_once()
+    mock_session.bind.dispose.assert_not_called()
+    assert uow.session is None
+
+
+def test_invalid_bind_releases_session(uow, mock_session):
+    mock_session.bind = None
+    with pytest.raises(TypeError, match="not bound"):
+        with uow:
+            pytest.fail("entry must fail")
+    mock_session.close.assert_called_once()
+
+
+def test_session_creation_failure_has_nothing_to_close(uow, mock_session_factory):
+    mock_session_factory.side_effect = RuntimeError("session creation failed")
+    with pytest.raises(RuntimeError, match="session creation failed"):
+        with uow:
+            pytest.fail("entry must fail")
+    assert uow.session is None
+
+
+@pytest.mark.parametrize("failure_at", ["body", "commit"])
+def test_primary_failure_survives_rollback_and_close_errors(
+    uow, mock_session, failure_at
+):
+    primary = RuntimeError(f"{failure_at} failed")
+    mock_session.rollback.side_effect = RuntimeError("rollback failed")
+    mock_session.close.side_effect = RuntimeError("close failed")
+    if failure_at == "commit":
+        mock_session.commit.side_effect = primary
+    with pytest.raises(RuntimeError) as raised:
+        with uow:
+            if failure_at == "body":
+                raise primary
+    assert raised.value is primary
+    assert primary.__notes__ == [
+        "Session rollback failed: rollback failed",
+        "Session close failed: close failed",
+    ]
+    mock_session.rollback.assert_called_once()
+    mock_session.close.assert_called_once()
+    assert uow.session is None
+
+
+def test_close_failure_after_commit_propagates(uow, mock_session):
+    mock_session.close.side_effect = RuntimeError("close failed")
+    with pytest.raises(RuntimeError, match="close failed"):
+        with uow:
+            pass
+    mock_session.commit.assert_called_once()
+    mock_session.rollback.assert_not_called()
+    assert uow.session is None
