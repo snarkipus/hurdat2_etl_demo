@@ -35,13 +35,79 @@ bd setup opencode
 
 OpenCode's `/init` was then invoked using `opencode run --command init`, scoped
 to `AGENTS.md`. Its generated guidance was reconciled with Beads and OpenSpec.
-No OpenCode plugin, MCP server, or `opencode.json` is required for this setup.
-OpenSpec supplies six commands and six skills under `.opencode/`.
+The initial bootstrap used the managed `AGENTS.md` integration alone; the
+current setup also uses the OpenCode plugin described below. OpenSpec supplies
+six commands and six skills under `.opencode/`.
 Restart OpenCode after initialization or updates so new guidance is loaded.
 
 Do not repeat `bd init` on another machine to recreate existing issue history.
 Use the fresh-clone procedure below instead. Do not reinstall Beads Git hooks:
 this repository already has pre-commit hooks, which remain unchanged.
+
+### OpenCode Beads Plugin
+
+The project config at [`.opencode/opencode.json`](../.opencode/opencode.json)
+pins `@snarkipus/opencode-beads@0.10.0`. OpenCode loads this package as a plugin;
+it is not a Python dependency or a Beads MCP server. Keep the version explicit
+and review upgrades rather than silently adopting a floating version. See the
+[versioned plugin documentation](https://github.com/snarkipus/opencode-beads/blob/v0.10.0/README.md).
+
+The plugin and `bd setup opencode` have distinct roles:
+
+- `bd setup opencode` maintains the generated Beads section in `AGENTS.md`.
+- The plugin injects full `bd prime` context on the first eligible session
+  message as system context, and after compaction as a synthetic `noReply`
+  prompt. Primary sessions and both bounded Beads task agents are eligible.
+  Recognized ordinary subagents such as `explore` and `general` are excluded;
+  missing or failed agent lookup falls back to allowing injection.
+- `/beads:ready`, `/beads:create`, and `/beads:show` are OpenCode workflows,
+  not shell executables. They do not cover every CLI subcommand; use `bd --help`
+  and the installed CLI for the complete command surface.
+- `beads-task-agent` supports explicitly read-only status/graph analysis or
+  completion of exactly one selected/ready Bead per invocation. Newly discovered
+  work is recorded and returned to the primary agent, not immediately executed.
+
+The primary thread retains the proposal, decisions, and orchestration context.
+After proposal review, it maps the checklist to Beads, selects an existing issue,
+and delegates that single issue with its scope and acceptance criteria. It
+verifies the returned result and reconciles `tasks.md` before selecting another
+issue. Do not run parallel implementation workers against the embedded database
+or ask a worker to autonomously drain ready work. Read-only graph requests must
+explicitly prohibit Beads mutations. The default worker inherits its caller's
+model. This project also opts into `beads-task-agent-luna`, which uses the
+plugin's `openai/gpt-5.6-luna` model and `max` variant defaults with the same
+bounded one-Bead workflow. Select that agent explicitly when delegating;
+enabling it does not reroute default delegation or change the primary model.
+The provider must expose that model/variant; the plugin does not configure
+authentication or silently fall back to another model.
+
+The installed `bd` CLI still owns initialization, issue state, migrations,
+backups, and Dolt synchronization. The plugin does not install `bd`, initialize
+the database, or install/repair Beads skills. Bootstrap's `--skip-hooks` skips
+Git hooks; `--skip-agents` skips generated agent instructions and automatic
+Claude/Codex integration, including the Codex skill installation path. Neither
+disables OpenCode plugin runtime hooks. The later `bd setup opencode` maintains
+the managed block, not those skipped integrations. Do not rerun initialization
+to imitate another installation's skill layout. Plugin workflows and injected
+defaults do not grant permission to commit, synchronize, push, or override
+repository policy.
+
+Restart OpenCode after installing or changing the plugin configuration. Verify
+the `/beads:*` commands and `beads-task-agent` are available in the new session.
+`bd setup opencode --check` checks the managed block, not plugin loading. If
+injection is missing, run `bd prime` and check CLI availability/workspace
+resolution. Failed or empty initial prime output can be retried on later
+messages; failed post-compaction injection does not necessarily retry on the
+next message, so use the manual fallback. Do not add a duplicate injection hook
+or reinitialize an existing database as a fix.
+If a command or worker definition is unexpected, inspect effective OpenCode
+configuration: explicit command definitions override plugin commands, and
+explicit agent fields override the corresponding plugin defaults. Agent merges
+are shallow: nested `permission`/`tools` values are replaced, not deep-merged,
+and overriding `prompt` can replace the bounded workflow. Default-worker
+overrides do not propagate to Luna. The one-Bead and read-only boundaries are
+prompt guidance, not a plugin-enforced mutation sandbox; repository policy
+and primary-thread verification remain necessary.
 
 ## Branch Workflow
 
