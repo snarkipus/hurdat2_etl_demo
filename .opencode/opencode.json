@@ -1,0 +1,9 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "@snarkipus/opencode-beads@0.10.0"
+  ],
+  "agent": {
+    "beads-task-agent-luna": {}
+  }
+}
