@@ -14,6 +14,9 @@ exhaustive defensive layer around a small local application.
 - **BREAKING**: Raise the supported Python minimum to 3.13; replace Poetry
   project/lock workflows with uv and mypy with BasedPyright. Align Ruff,
   pre-commit, packaging, and GitHub Actions around reproducible quality gates.
+- Refresh runtime libraries in a separate increment after the Python/uv switch,
+  selecting compatible stable releases and preserving the tested ETL contracts
+  before installed-wheel acceptance, CI, and final cleanup.
 - Replace formatted text logging with structlog-backed structured events while
   retaining Typer/Rich progress and operator reports.
 - Retain existing stages and local HURDAT2 reading, parsing, normalization,
