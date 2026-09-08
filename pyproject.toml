@@ -6,13 +6,13 @@ authors = [{name = "Matt Jackson", email = "matt@jacksonsix.com"}]
 readme = "README.md"
 requires-python = ">=3.13,<4"
 dependencies = [
-    "pydantic>=2.11.0,<3",
-    "rich>=13.9.4,<14",
-    "typer>=0.15.2,<0.16",
-    "alembic>=1.15.2,<2",
-    "duckdb>=1.2.1,<2",
+    "pydantic>=2.13.5,<3",
+    "rich>=15.0.0,<16",
+    "typer>=0.27.2,<0.28",
+    "alembic>=1.19.2,<2",
+    "duckdb>=1.5.5,<2",
     "duckdb-engine>=0.17.0,<0.18",
-    "sqlalchemy>=2.0.40,<3",
+    "sqlalchemy>=2.0.52,<3",
 ]
 
 [project.scripts]
