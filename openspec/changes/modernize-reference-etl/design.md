@@ -185,6 +185,23 @@ and tests. Declare directly used SQLAlchemy; add structlog with logging work.
 Replace Poetry/mypy only when their successors are verified. Use narrow justified
 typing exceptions, not blanket ignores or unrelated runtime rewrites.
 
+Keep the Python/uv switch separate from a subsequent runtime-library refresh so
+compatibility regressions have a bounded cause. Review Pydantic, Rich, Typer,
+Alembic, DuckDB, duckdb-engine, SQLAlchemy, and necessary runtime transitives for
+current stable Python 3.13-compatible releases. Record before/after versions,
+review declared ranges and major-version compatibility, and justify holds;
+generate the lock with uv without unrelated dev/build-tool churn. Make only
+necessary compatibility edits and retain independent value, migration/schema,
+Spatial, transaction, and publication assertions. This is not a schema redesign
+or an upgrade service for old output databases.
+
+The refresh follows the locked Python/uv baseline and precedes installed-wheel
+acceptance and the final bounded cleanup review. CI and final acceptance must
+validate the upgraded dependency set rather than reuse pre-upgrade evidence.
+It does not depend on typing/hook modernization or structlog adoption; run the
+applicable current quality gates and distinguish existing lint debt from new
+regressions. Preserve the full suite's 80% branch-coverage gate.
+
 Align Ruff and local hooks with locked project tools; CI checks do not fix files.
 Preserve 80% branch-measured coverage. Linux runs the full quality/test suite and
 one installed-wheel ETL smoke outside the checkout; Windows runs targeted real

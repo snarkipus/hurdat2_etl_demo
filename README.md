@@ -1,6 +1,6 @@
 # HURDAT2 ETL Pipeline
 
-[![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Typed with mypy](https://img.shields.io/badge/mypy-typed-blue.svg)](https://mypy.readthedocs.io/en/stable/)
@@ -34,8 +34,8 @@ The implementation follows modern software engineering practices, including clea
 
 ### Prerequisites
 
-- Python 3.12+
-- Poetry (for dependency management)
+- Python >=3.13,<4 (development pin: 3.13)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (validated with 0.12.10)
 
 ### Setup
 
@@ -45,17 +45,22 @@ The implementation follows modern software engineering practices, including clea
    cd etl_pipeline
    ```
 
-2. Install dependencies using Poetry:
+2. Install the pinned Python and locked project/development dependencies:
    ```bash
-   poetry install
+   uv python install 3.13
+   uv sync --locked
    ```
+
+   `uv sync --locked` uses `.python-version` and refuses an out-of-date `uv.lock`
+   instead of updating dependency selections. Generate dependency changes with
+   `uv lock`; never hand-edit the lockfile. Poetry is not required.
 
 ## Usage
 
 Run the ETL pipeline with:
 
 ```bash
-poetry run etl-pipeline --input /path/to/hurdat2.txt --output /path/to/database.duckdb
+uv run --locked etl-pipeline --input /path/to/hurdat2.txt --output /path/to/database.duckdb
 ```
 
 Options:
@@ -136,8 +141,8 @@ not treated as accepted requirements or an active backlog.
 Run tests with pytest:
 
 ```bash
-poetry run pytest                    # Run all tests
-poetry run pytest --cov=src          # Run with coverage report
+uv run --locked pytest              # Full suite, branch coverage, 80% minimum
+uv run --locked pytest --no-cov tests/unit/transform/test_parser.py  # Focused only
 ```
 
 ### Type Checking
@@ -145,7 +150,7 @@ poetry run pytest --cov=src          # Run with coverage report
 Run mypy type checking:
 
 ```bash
-poetry run mypy src tests
+uv run --locked mypy src tests
 ```
 
 ### Linting
@@ -153,9 +158,13 @@ poetry run mypy src tests
 Run ruff linter:
 
 ```bash
-poetry run ruff check src tests
-poetry run ruff format src tests
+uv run --locked ruff check src tests
+uv run --locked ruff format --check src tests
 ```
+
+Use `uv run --locked ruff format src tests` to apply formatting. Mypy and the
+existing remote Ruff/mypy hook versions remain in use during this baseline
+increment; hook alignment and known source lint cleanup are separate work.
 
 ## License
 

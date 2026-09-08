@@ -154,14 +154,14 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 Run from the repository root. Commands are verified against `pyproject.toml`, CLI code, and tests, not a claim that the current checkout passes all checks.
 
-- Setup: Python `^3.12` (>=3.12,<4), then `poetry install` (includes dev tools). Preserve `poetry.lock`; it is generated, not hand-edited.
-- CLI: `poetry run etl-pipeline --input /path/to/hurdat2.txt --output /path/to/new.duckdb`. This is a single-command Typer app: no `run` or `run-etl` subcommand.
-- Lint: `poetry run ruff check src tests`; formatting check: `poetry run ruff format --check src tests`; apply formatting: `poetry run ruff format src tests`.
-- Types: `poetry run mypy src tests` (`mypy_path = "src"`; tests have relaxed overrides).
-- Full suite: `poetry run pytest`. Default options enforce 80% coverage with branch measurement and write `.coverage`, `htmlcov/`, and `lcov.info`.
-- Focused test: `poetry run pytest --no-cov tests/unit/transform/test_parser.py::test_parse_cyclone_id`. Use `--no-cov` for focused runs to avoid the whole-project coverage gate; this is not a substitute for the full suite.
-- Integration suite: `poetry run pytest --no-cov tests/integration`. DuckDB is embedded, but load/CLI tests execute `INSTALL spatial` and `LOAD spatial`; extension installation may require network access.
-- Configured pre-commit order is Ruff fix/format, mypy, pytest. Hooks modify files; hook Ruff is pinned to `v0.9.7`, unlike Poetry's `^0.11.2`, so results can differ.
+- Setup: Python `>=3.13,<4`, pinned to 3.13 in `.python-version`; `uv python install 3.13`, then `uv sync --locked` (includes dev tools; uv 0.12.10 validated). Preserve `uv.lock`; generate dependency changes with `uv lock`, never hand-edit it. Builds use PEP 621/Hatchling; Poetry is not required.
+- CLI: `uv run --locked etl-pipeline --input /path/to/hurdat2.txt --output /path/to/new.duckdb`. This is a single-command Typer app: no `run` or `run-etl` subcommand.
+- Lint: `uv run --locked ruff check src tests`; formatting check: `uv run --locked ruff format --check src tests`; apply formatting: `uv run --locked ruff format src tests`.
+- Types: `uv run --locked mypy src tests` (`mypy_path = "src"`; tests have relaxed overrides).
+- Full suite: `uv run --locked pytest`. Default options enforce 80% coverage with branch measurement and write `.coverage`, `htmlcov/`, and `lcov.info`.
+- Focused test: `uv run --locked pytest --no-cov tests/unit/transform/test_parser.py::test_parse_cyclone_id`. Use `--no-cov` for focused runs to avoid the whole-project coverage gate; this is not a substitute for the full suite.
+- Integration suite: `uv run --locked pytest --no-cov tests/integration`. DuckDB is embedded, but load/CLI tests execute `INSTALL spatial` and `LOAD spatial`; extension installation may require network access.
+- Configured pre-commit order is Ruff fix/format, mypy, pytest. Hooks modify files; hook Ruff remains pinned to `v0.9.7`, unlike the project's locked `0.11.2`, so results can differ. Hook alignment and the BasedPyright migration are separate work; the pytest hook uses uv.
 
 ## Architecture & Gotchas
 

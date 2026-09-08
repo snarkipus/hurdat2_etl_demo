@@ -22,6 +22,25 @@ than silently rewrite dependency selections.
 - **WHEN** installation is attempted with Python 3.12
 - **THEN** the package metadata rejects that interpreter rather than claiming support
 
+### Requirement: Validated runtime-library refresh
+
+After establishing the locked Python 3.13 baseline, the project SHALL separately
+review and upgrade its existing runtime libraries and necessary runtime
+transitives to compatible stable releases. Version selections and any deferred
+upgrades SHALL be recorded with their reasons. Declared ranges SHALL be reviewed
+for compatibility rather than blindly accepting breaking releases. The uv
+lockfile SHALL be generated with uv, without unrelated dev/build-tool upgrades.
+Necessary compatibility edits SHALL preserve the source-value, migration,
+spatial verification, transaction, and safe-publication contracts.
+
+#### Scenario: Validate refreshed runtime dependencies
+- **WHEN** the runtime-library refresh is implemented on Python 3.13
+- **THEN** clean locked setup leaves the lockfile unchanged, the full suite retains at least 80% branch coverage, and existing independent value, migration/schema, Spatial, transaction, and publication assertions pass without weakened expectations
+
+#### Scenario: Downstream acceptance uses the refreshed stack
+- **WHEN** installed-wheel acceptance, the final bounded cleanup review, CI, and final acceptance execute
+- **THEN** they evaluate the refreshed runtime dependency set rather than treating pre-upgrade results as sufficient evidence
+
 ### Requirement: Usable distributable CLI
 
 Built distributions SHALL include all runtime resources needed for a fresh
