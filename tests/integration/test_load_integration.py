@@ -1,17 +1,15 @@
 """Integration tests for the Load stage, focusing on database interactions."""
 
-# Removed Alembic imports
 from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
+from etl_pipeline.exceptions import LoadError
 from etl_pipeline.load.load import LoadStage
-
-# Import Base from the models to create/drop tables
-from etl_pipeline.load.models import Base
 from etl_pipeline.load.unit_of_work import SqlAlchemyUnitOfWork
+from etl_pipeline.migrations import initialize_database
 
 # Import Pydantic models for creating test data
 from etl_pipeline.transform.models import Observation as PydanticObservation
@@ -22,11 +20,12 @@ from etl_pipeline.transform.models import Storm as PydanticStorm
 # Use a function-scoped fixture for in-memory DB to ensure isolation
 @pytest.fixture(scope="function")
 def in_memory_db_engine():
-    """Creates an in-memory DuckDB engine and creates tables from metadata."""
+    """Creates an in-memory DuckDB engine initialized by packaged migrations."""
     engine = create_engine("duckdb:///:memory:")
 
     try:
-        Base.metadata.create_all(engine)
+        with engine.begin() as connection:
+            initialize_database(connection)
         yield engine
     finally:
         engine.dispose()
@@ -85,6 +84,34 @@ def sample_integration_data():
 
     # The load stage expects separate iterables
     return [storm1], [obs1, obs2]
+
+
+@pytest.mark.parametrize("initialize_then_drop", [False, True])
+def test_missing_schema_is_not_created_or_repaired(
+    sample_integration_data, initialize_then_drop
+):
+    engine = create_engine("duckdb:///:memory:")
+    try:
+        if initialize_then_drop:
+            with engine.begin() as connection:
+                initialize_database(connection)
+                connection.execute(text("DROP TABLE observations"))
+        factory = sessionmaker(bind=engine)
+        stage = LoadStage(uow_factory=lambda: SqlAlchemyUnitOfWork(factory))
+        with pytest.raises(LoadError):
+            stage.execute(sample_integration_data)
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.tables "
+                        "WHERE table_name = 'observations'"
+                    )
+                ).scalar_one()
+                == 0
+            )
+    finally:
+        engine.dispose()
 
 
 def test_load_preserves_utc_in_non_utc_session(

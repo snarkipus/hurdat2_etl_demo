@@ -169,9 +169,9 @@ Run from the repository root. Commands are verified against `pyproject.toml`, CL
 - `transform/models.py` contains Pydantic validation models; `load/models.py` contains distinct SQLAlchemy persistence models. `LoadStage` converts between them and receives an injectable Unit-of-Work factory; repositories share its session, committing on clean exit and rolling back on exceptions.
 - Observation `geom` is a WKT **string**, not a native geometry column: `POINT(longitude latitude)`. Spatial queries convert it with `ST_GeomFromText`. Observation IDs are assigned by the loader, not database autoincrement.
 - **The CLI deletes an existing output database before extraction.** Use a disposable/new output path, never an existing database that must be preserved.
-- Runtime schema setup uses `Base.metadata.create_all()` in `SqlAlchemyUnitOfWork`, not Alembic upgrades. Alembic is separate (`src/etl_pipeline/migrations`); `alembic.ini` and the default UoW target `data/hurdat.duckdb`, while the CLI injects its requested output database.
-- Stage construction writes `logs/pipeline.log` relative to the working directory. CLI integration tests delete that file before and after each test; do not run them when its contents must be preserved.
-- Load integration tests use an in-memory DuckDB with schema from ORM metadata, not migrations. CLI tests use `tests/unit/data/test_data.txt` and a temporary output DB; neither suite verifies Alembic history.
+- The CLI initializes schema with packaged Alembic migrations (`initialize_database(connection)`) before loading and owns disposal of both load and summary engines. UoW entry does not create or repair tables; callers must initialize schema explicitly. `alembic.ini` and the default UoW target `data/hurdat.duckdb`, while the CLI injects its requested output database.
+- Stage construction writes `logs/pipeline.log` relative to the working directory. Tests isolate their working directories and close test-created file handlers so normal test runs do not delete the developer's log.
+- Load integration tests use an in-memory DuckDB initialized by packaged migrations. CLI tests use `tests/unit/data/test_data.txt` and a temporary output DB, independently checking committed values and migration state after runtime disposal. Migration tests also verify the revision chain and ORM metadata parity.
 
 ## Local Conventions
 
