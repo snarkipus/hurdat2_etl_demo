@@ -67,10 +67,10 @@
 
 sync.remote: "git+https://github.com/snarkipus/hurdat2_etl_demo.git"
 
-# Explicit, review-first handoff policy. Local writes persist without commits.
+# Beads manages local history; remote publication remains explicitly authorized.
 # Conservative authority is defined in AGENTS.md and the Beads database's
 # agent.profile setting; this CLI does not read that setting from YAML.
-dolt.auto-commit: "off"
+dolt.auto-commit: "on"
 dolt.auto-push: false
 backup:
   enabled: false

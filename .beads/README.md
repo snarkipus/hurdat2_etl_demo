@@ -23,4 +23,6 @@ See the [plugin usage guide](../docs/agentic-workflow.md#opencode-beads-plugin).
 Track `.gitignore`, `config.yaml`, `metadata.json`, and this README in source Git.
 Do not track the embedded database, interaction traces, exports, or credentials.
 Issue history is synchronized separately through the Dolt remote, not by a
-source-code commit. Local writes persist, but auto-commit and auto-push are off.
+source-code commit. Local auto-commit is on: normal `bd` writes manage history
+without a routine manual commit step. Auto-push remains off; remote pull/push
+and source Git commits still require explicit authorization.
