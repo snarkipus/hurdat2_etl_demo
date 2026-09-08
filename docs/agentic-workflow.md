@@ -5,9 +5,13 @@
 `main` is the protected canonical DuckDB implementation, initially at `9af5d7a`.
 Root `AGENTS.md` governs repository behavior; `CLAUDE.md` only imports it.
 OpenSpec owns specification and intent. Beads owns task execution state.
-Existing plans and reviews in `docs/` are historical reference, not an active
-backlog or automatically accepted requirements. Adopt specs incrementally for
-reviewed changes instead of inventing a retrospective specification.
+Existing plans, reviews, and diagrams in `docs/archive/` are historical reference,
+not an active backlog or automatically accepted requirements. Adopt specs
+incrementally for reviewed changes instead of inventing a retrospective specification.
+See the [documentation map](README.md) for assets, external references, and the
+boundary between current behavior and proposed target architecture. A small
+documentation-only cleanup can be tracked directly in Beads without inventing
+application requirements or an OpenSpec change.
 
 This bootstrap does not change application code, Python tooling, dependencies,
 logging, migrations, CI, or pre-commit hooks. The previous baseline verification
@@ -59,9 +63,9 @@ bd ready --json
 bd update <issue-id> --claim --json
 ```
 
-Use `fix/` or `chore/` when more descriptive. Include the Beads ID and OpenSpec
-change path in the eventual PR. Never implement directly on `main`. Do not
-force-push or rewrite history. GitHub requires PRs, blocks force pushes and
+Use `fix/`, `chore/`, or `docs/` when more descriptive. Include the Beads ID and,
+when applicable, the OpenSpec change path in the eventual PR. Never implement
+directly on `main`. Do not force-push or rewrite history. GitHub requires PRs, blocks force pushes and
 deletion, and applies protection to admins; mandatory approvals are zero for
 solo-maintainer use. Required CI checks remain a separate follow-up.
 
@@ -75,22 +79,50 @@ by `git switch`.
 
 ## Specification and Execution
 
-Use `/opsx-explore` for investigation and `/opsx-propose` for a scoped change.
-The core profile also provides `/opsx-apply`, `/opsx-update`, `/opsx-sync`, and
-`/opsx-archive`. These are OpenCode commands, not shell executables.
-OpenSpec sync reconciles specifications; it is not Beads remote synchronization.
+Implementation is driven by Beads, not `/opsx-apply`. OpenSpec commands are
+invoked in OpenCode, not the shell. The normal flow is:
 
-Link Beads issues to `openspec/changes/<change>/` or the relevant spec using
-`bd create --spec-id <path>` and describe acceptance and design. Reference the
-resulting issue IDs in OpenSpec's implementation checklist. Claims, dependency
-edges, blockers, and live progress belong only in Beads. The OpenSpec checklist
-is a derived acceptance/implementation record, not a second task tracker.
-Reconcile it from verified outcomes before archiving. This narrow checklist
-exception overrides the generated Beads ban on Markdown task lists.
-After revising requirements, reopen affected Beads work and refresh the derived
-checklist before apply checks for completion. After archiving, update affected
-Beads spec references to the actual archive or canonical spec paths; the original
-change directory no longer exists.
+1. Investigate with `/opsx-explore`, then use `/opsx-propose` to produce the
+   proposal, design, delta specs, and `tasks.md` for a scoped change.
+2. Review those artifacts before building a Beads dependency graph from the
+   approved implementation checklist. Do not infer migration approval from a
+   diagram or a generated task.
+3. Execute through Beads: inspect ready work, claim an issue, implement its
+   scope, verify acceptance, and record its outcome. Beads owns assignments,
+   dependency edges, blockers, and live execution status.
+4. Reconcile `tasks.md` in the same session as each verified Beads outcome.
+   This is continuous agent-maintained reconciliation, not background automation.
+5. Perform a final coverage and consistency check, then complete the remaining
+   OpenSpec flow with `/opsx-sync` and `/opsx-archive`. OpenSpec sync reconciles
+   specifications; it is not Beads remote synchronization.
+
+The mapping is not necessarily one-to-one. One checklist item can require
+several Beads issues, and one issue can satisfy several checklist items. Record
+the associated issue IDs alongside each mapped item. Link issues back with
+`bd create --spec-id <path>` and identify the applicable item numbers or scope
+in the issue description, together with acceptance criteria and design.
+Reuse existing issues when appropriate; do not fabricate IDs during proposal
+generation or mechanically create duplicate tasks.
+
+Every implementation item must have traceable Beads coverage before execution.
+Check it off only when its entire scope has verified coverage, including all
+required supporting issues. A closed issue alone is not proof of full coverage;
+cancelled or superseded work requires a verified replacement or explicit scope
+revision. The OpenSpec checklist is a derived completion record, not a second
+execution tracker. This narrow exception overrides the generated Beads ban on
+Markdown task lists.
+
+Use `/opsx-update` when requirements or design change. Revise the affected Beads
+graph and reopen affected checklist items as necessary before continuing work.
+Before sync/archive, confirm that the checklist, verified issue outcomes, and
+approved scope agree. After archiving, update affected Beads spec references
+to the actual archive or canonical spec paths; the original change directory
+no longer exists.
+
+The core profile still installs `/opsx-apply` and the `openspec-apply-change`
+skill. Keep them intact for tool-update compatibility, but do not use them as
+the normal implementation entry point. Their generated handoffs do not override
+this repository's Beads-led workflow.
 
 Preserve the managed Beads block in `AGENTS.md` and generated OpenSpec command
 and skill bodies. Put overrides outside that block and in `openspec/config.yaml`.

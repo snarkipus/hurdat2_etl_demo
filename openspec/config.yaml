@@ -6,7 +6,13 @@ context: |
   DuckDB, Alembic, Rich/logging, pytest, Ruff, and mypy remain unchanged.
   Root AGENTS.md is canonical repository guidance; read it before implementation.
   OpenSpec owns specification and intent. Beads owns execution state and dependencies.
-  Historical docs/ plans and reviews are reference inputs, not accepted specs.
+  After reviewing proposal artifacts, map tasks.md to a Beads dependency graph;
+  the mapping can be many-to-many. Implement through Beads, not opsx-apply.
+  Reconcile tasks.md in the same session as verified Beads outcomes, then perform
+  a final consistency check before OpenSpec sync/archive.
+  Historical docs/archive/ material is evidence, not accepted specs or a backlog.
+  See docs/README.md for documentation authority. Target-state diagrams are proposal
+  artifacts, not evidence that the proposed architecture/tooling is implemented.
   Work sequentially in one checkout on feature branches; main is protected.
   No commits, pushes, or Dolt remote sync without explicit user approval.
   The CLI deletes an existing output database; use disposable output paths.
@@ -16,17 +22,17 @@ rules:
     - State non-goals; toolchain, dependencies, logging, and runtime migrations require explicit scope approval.
     - Distinguish verified existing behavior from newly proposed requirements.
   tasks:
-    - Link implementation checklist items to Beads IDs and the associated change/spec paths.
+    - Produce a scope-based implementation checklist; after artifact review, map it to a Beads dependency graph without assuming a one-to-one mapping.
+    - Record real Beads IDs beside mapped items and link issues back to change/spec paths and item scope; do not invent IDs or duplicate existing issues.
     - Beads is authoritative for claims, blockers, dependencies, and live execution status; do not duplicate these here.
-    - Check off items only from verified Beads outcomes, reconciling before archive.
+    - Reconcile checklist items in the same session as verified Beads outcomes; check an item only when its entire scope is satisfied, not merely when one associated issue closes.
+    - Cancelled or superseded issues do not imply completion; reconcile replacements or approved scope revisions and reopen affected items when requirements change.
 
 operations:
   apply:
     guidance:
-      - Read AGENTS.md and bd prime; claim the linked Beads issue before implementation.
-      - After spec revisions, reopen affected Beads work and reconcile derived checklist items before evaluating whether apply is complete.
-      - Keep execution state in Beads; report validation and a diff before requesting commit authority.
+      - This repository does not normally use opsx-apply; follow the Beads-led execution flow in AGENTS.md and docs/agentic-workflow.md instead of the generated apply handoff.
   archive:
     guidance:
-      - Reconcile the implementation checklist with verified Beads outcomes; do not infer completion from prose alone.
+      - Perform a final consistency check of the continuously reconciled checklist, verified Beads outcomes, and approved scope before sync/archive; do not infer completion from prose or issue closure alone.
       - After archiving, update affected Beads spec references to the archive or canonical spec paths so links remain valid.
