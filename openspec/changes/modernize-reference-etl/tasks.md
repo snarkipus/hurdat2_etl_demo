@@ -41,9 +41,9 @@ Contract: [migration-backed loading](specs/migration-backed-loading/spec.md).
 
 Contract: [persisted verification](specs/persisted-dataset-verification/spec.md).
 
-- [ ] 3.1 Capture two loader-input count expectations and compare with independently queried committed counts; verify match, mismatch, and empty cases, demonstrating loader-return counters are not the oracle. Do not duplicate schema null/orphan enforcement with runtime audits.
+- [x] 3.1 Capture two loader-input count expectations and compare with independently queried committed counts; verify match, mismatch, and empty cases, demonstrating loader-return counters are not the oracle. Do not duplicate schema null/orphan enforcement with runtime audits.
   Beads: `etl-0ix.4`.
-- [ ] 3.2 Use compact DuckDB Spatial queries to check all geometries are nonempty points with finite, in-bounds longitude/latitude; verify representative valid/boundary and invalid geometry/coordinate cases, including 270E-normalized output, without repair. Reuse this query for spatial readiness, a constant point for empty inputs, and a focused query-failure test for fail-closed behavior; no separate readiness subsystem.
+- [x] 3.2 Use compact DuckDB Spatial queries to check all geometries are nonempty points with finite, in-bounds longitude/latitude; verify representative valid/boundary and invalid geometry/coordinate cases, including 270E-normalized output, without repair. Reuse this query for spatial readiness, a constant point for empty inputs, and a focused query-failure test for fail-closed behavior; no separate readiness subsystem.
   Beads: `etl-0ix.4`.
 
 ## 4. Safe Publication and Trustworthy Results
