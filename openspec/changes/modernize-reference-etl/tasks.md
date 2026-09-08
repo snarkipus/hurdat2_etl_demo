@@ -51,13 +51,13 @@ Contract: [persisted verification](specs/persisted-dataset-verification/spec.md)
 Contracts: [publication](specs/safe-output-publication/spec.md),
 [success reporting](specs/pipeline-observability/spec.md).
 
-- [ ] 4.1 Add `--replace` and concise preflight for destination consent, input aliases, unsuitable paths, and destination WAL; verify refusal preserves existing files before processing, using filesystem-level tests rather than full ETL runs for every path variation.
+- [x] 4.1 Add `--replace` and concise preflight for destination consent, input aliases, unsuitable paths, and destination WAL; verify refusal preserves existing files before processing, using filesystem-level tests rather than full ETL runs for every path variation.
   Beads: `etl-0ix.5`.
-- [ ] 4.2 Route migrations/loading/verification to a uniquely owned sibling candidate and publish only after finalization; verify atomic explicit replacement and no-clobber creation, including a late collision and denied/unsupported operation, with closed-file helper tests and no destructive fallback.
+- [x] 4.2 Route migrations/loading/verification to a uniquely owned sibling candidate and publish only after finalization; verify atomic explicit replacement and no-clobber creation, including a late collision and denied/unsupported operation, with closed-file helper tests and no destructive fallback.
   Beads: `etl-0ix.5` (filesystem helpers), `etl-0ix.6` (candidate integration).
-- [ ] 4.3 Add straightforward incomplete-candidate cleanup and verified-candidate retention on publication failure; verify primary-error and leftover-path reporting at the owning boundary with representative injected failures, without stage-by-stage secondary-error combinations or automated recovery.
+- [x] 4.3 Add straightforward incomplete-candidate cleanup and verified-candidate retention on publication failure; verify primary-error and leftover-path reporting at the owning boundary with representative injected failures, without stage-by-stage secondary-error combinations or automated recovery.
   Beads: `etl-0ix.6`.
-- [ ] 4.4 Mark publication success before redundant-name cleanup and optional summary; verify publication failure is non-zero while post-publication housekeeping/summary failure warns and preserves success. This lifecycle correction does not depend on adopting structlog.
+- [x] 4.4 Mark publication success before redundant-name cleanup and optional summary; verify publication failure is non-zero while post-publication housekeeping/summary failure warns and preserves success. This lifecycle correction does not depend on adopting structlog.
   Beads: `etl-0ix.6`.
 
 ## 5. Modern Development Tools

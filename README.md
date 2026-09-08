@@ -61,6 +61,12 @@ poetry run etl-pipeline --input /path/to/hurdat2.txt --output /path/to/database.
 Options:
 - `--input`, `-i`: Path to the input HURDAT2 text file (required)
 - `--output`, `-o`: Path to the output DuckDB database file (required)
+- `--replace`: Explicitly allow atomic replacement of existing output. The CLI
+  builds and verifies a sibling candidate before publication; keep external
+  writers stopped. Publication failure retains the candidate at the reported
+  path for manual recovery, without changing old output. Supported local
+  filesystems must provide atomic replace/hard-link operations; no copy fallback
+  or automatic backup is provided.
 - `--log-level`, `-l`: Logging level (defaults to INFO)
 
 <img src="docs/assets/readme/help.png" alt="ETL Pipeline Demo CLI Help" width="800">

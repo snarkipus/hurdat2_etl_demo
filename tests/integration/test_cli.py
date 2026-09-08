@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 # Import the app instance from the new location within the package
 from etl_pipeline.cli import app
+from etl_pipeline.exceptions import ETLError
 
 # Create a CliRunner instance to invoke commands
 runner = CliRunner()
@@ -36,11 +37,14 @@ def cli_engines(monkeypatch, mocker):
     return engines
 
 
-def test_run_etl_success(tmp_path, cli_engines):
+@pytest.mark.parametrize("replace", [False, True])
+def test_run_etl_success(tmp_path, cli_engines, replace):
     """
     Test the 'run-etl' command with valid inputs, expecting success.
     """
     output_db_path = tmp_path / "test_output.duckdb"
+    if replace:
+        output_db_path.write_bytes(b"previous output must survive until publication")
 
     # Ensure the test input file exists
     assert TEST_INPUT_FILE.exists(), f"Test input file not found: {TEST_INPUT_FILE}"
@@ -64,6 +68,7 @@ def test_run_etl_success(tmp_path, cli_engines):
             str(output_db_path),
             "--log-level",
             "DEBUG",  # Use DEBUG for more detailed logs during testing
+            *(["--replace"] if replace else []),
         ],
         # catch_exceptions=True is the default, allows stderr capture
     )
@@ -95,6 +100,7 @@ def test_run_etl_success(tmp_path, cli_engines):
         engine.dispose.assert_called_once_with()
         assert engine.pool.checkedout() == 0
     assert not Path(f"{output_db_path}.wal").exists()
+    assert not list(tmp_path.glob(".test_output.duckdb.*"))
     # A separate process cannot borrow a pooled writer or its in-memory state.
     reopened = subprocess.run(  # noqa: S603 - fixed Python code and test-owned path
         [
@@ -246,3 +252,61 @@ def test_run_etl_success(tmp_path, cli_engines):
         assert "CRITICAL" not in log_content.upper()
     except Exception as log_err:
         pytest.fail(f"Failed to read or verify log file content: {log_err}")
+
+
+@pytest.mark.parametrize("failure", ["verification", "publication"])
+def test_failed_replacement_preserves_old_output(
+    tmp_path, cli_engines, mocker, failure
+):
+    output = tmp_path / "old.duckdb"
+    output.write_bytes(b"old output")
+    if failure == "verification":
+        mocker.patch(
+            "etl_pipeline.cli.verify_persisted_dataset",
+            side_effect=ETLError("verification refused"),
+        )
+    else:
+        mocker.patch(
+            "etl_pipeline.publication.os.replace",
+            side_effect=PermissionError("publication denied"),
+        )
+    result = runner.invoke(
+        app, ["--input", str(TEST_INPUT_FILE), "--output", str(output), "--replace"]
+    )
+    assert result.exit_code == 1, result.output
+    assert failure in result.output
+    assert "completed successfully" not in result.output
+    assert output.read_bytes() == b"old output"
+    assert len(cli_engines) == 1
+    cli_engines[0].dispose.assert_called_once_with()
+    assert cli_engines[0].pool.checkedout() == 0
+    candidates = list(tmp_path.glob(".old.duckdb.*"))
+    if failure == "verification":
+        assert candidates == []
+    else:
+        assert len(candidates) == 1  # Standalone database, no candidate WAL.
+        candidate = candidates[0]
+        assert str(candidate) in result.output.replace("\n", "")
+        engine = create_engine(
+            f"duckdb:///{candidate}", connect_args={"read_only": True}
+        )
+        try:
+            with engine.connect() as connection:
+                assert (
+                    connection.execute(text("SELECT count(*) FROM storms")).scalar_one()
+                    == 2
+                )
+                assert (
+                    connection.execute(
+                        text("SELECT count(*) FROM observations")
+                    ).scalar_one()
+                    == 34
+                )
+                assert (
+                    connection.execute(
+                        text("SELECT version_num FROM alembic_version")
+                    ).scalar_one()
+                    == "6accd1b8062d"
+                )
+        finally:
+            engine.dispose()

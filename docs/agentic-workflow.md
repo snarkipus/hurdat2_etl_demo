@@ -202,6 +202,31 @@ Track only shareable `.beads` configuration, metadata, ignore rules, and README.
 Database files, credentials, interaction traces, optional JSONL exports, and
 backups stay local and ignored. A source Git commit does not back up issues.
 
+### Beads Access Boundary
+
+Use `bd` as the operational interface to Beads. This includes routine status,
+history/diff inspection, issue and dependency changes, and authorized commits
+and synchronization. Discover supported operations with `bd --help` and
+`bd <command> --help`; do not substitute raw database commands when a familiar
+command or flag is unavailable. In this guide, "Dolt commit/sync" means the
+Beads-managed `bd dolt ...` commands, not invoking `dolt` directly.
+
+Do not inspect or manipulate the embedded database through raw `dolt` commands
+(including `status`, `diff`, or `sql`), direct SQL through any interface, another
+database client, or manual database-file operations. Read-only intent does not
+waive this boundary. Routine review must stay within Beads rather than bypassing
+its lifecycle, locking, or schema assumptions.
+
+If a necessary diagnostic or recovery step is unavailable through supported
+Beads operations, stop and explain the limitation. Propose the exact lower-level
+operation, whether it reads or writes, and its risks; obtain explicit approval
+before running it. For approved writes, agree on backup/recovery precautions
+and ensure other writers are stopped. Approval covers only that operation, not
+an ongoing exception. General authorization to implement, commit, push, or sync
+does not grant direct database access. Apply the same restrictions to subagents;
+do not delegate a bypass or turn a failed Beads command into automatic raw-Dolt
+troubleshooting.
+
 `dolt.auto-commit` is explicitly `off`. Writes persist in the Dolt working set
 but are not ready for publication until explicitly committed. This overrides
 the generated integration's statement that every write auto-commits.
