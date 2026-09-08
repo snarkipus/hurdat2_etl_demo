@@ -19,6 +19,8 @@ exhaustive defensive layer around a small local application.
 - Retain existing stages and local HURDAT2 reading, parsing, normalization,
   units, missing-value handling, and deduplication semantics. Extract a helper
   only when a concrete implementation or testability need justifies it.
+- Polish touched and directly related legacy source with selective,
+  behavior-preserving cleanup, not a broad rewrite or extra abstraction layer.
 - Make Alembic migrations to `head` authoritative for schema creation on a
   fresh, uniquely named temporary DuckDB database beside the destination.
 - **BREAKING**: Refuse an existing destination before processing unless

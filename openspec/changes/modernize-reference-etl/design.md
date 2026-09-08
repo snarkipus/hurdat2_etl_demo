@@ -225,6 +225,22 @@ failure retaining a reopenable candidate. Platform tests target actual filesyste
 and handle differences, not a stage-by-platform cross-product. Existing tests
 count as coverage; do not manufacture duplicate cases to match checklist wording.
 
+### 9. Polish source without adding weight
+
+After relevant tests establish behavior, use `code-simplifier` selectively on
+touched source and directly related legacy implementation. Prefer clearer
+control flow/names and removal of duplication, dead code, or unnecessary helpers.
+The primary agent bounds the scope, reviews the diff for exact behavior
+preservation and unnecessary abstraction/SLOC growth, and reruns the baseline
+assertions and relevant quality checks. Do not impose a line-count target or
+manufacture edits when review finds no worthwhile simplification.
+
+Scoped passes can accompany implementation; a final bounded cleanup review
+revisits the earlier implementation after runtime, typing and diagnostic changes.
+Use one editing agent at a time. Unrelated improvements return to the primary
+agent rather than expanding into a repository-wide rewrite; final acceptance
+reruns the full gates after cleanup.
+
 ## Risks / Trade-offs
 
 - [New Python/dependency compatibility] -> Resolve and lock on Python 3.13;
