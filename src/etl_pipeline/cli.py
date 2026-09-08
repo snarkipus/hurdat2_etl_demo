@@ -1,5 +1,8 @@
 import logging
+import os
+import shutil
 import sys
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import partial
@@ -27,9 +30,61 @@ from .load.load import LoadStage
 from .load.unit_of_work import SqlAlchemyUnitOfWork
 from .load.verification import verify_persisted_dataset
 from .migrations import initialize_database
+from .publication import preflight_output, publish_candidate
 from .transform.transform import TransformStage
 
 app = typer.Typer()
+
+
+def _warn(console: Console, message: str) -> None:
+    """Keep optional presentation from changing the persistence outcome."""
+    try:
+        console.print(f"Warning: {message}", style="yellow", markup=False)
+    except Exception:
+        try:
+            print(f"Warning: {message}", file=sys.stderr)
+        except Exception:  # noqa: S110 - both diagnostic sinks have failed
+            pass
+
+
+def _cleanup_candidate(candidate: Path, console: Console) -> None:
+    """Remove only this run's database and known transient artifacts."""
+    for path in (Path(f"{candidate}.wal"), candidate):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            _warn(console, f"Could not remove run-owned artifact {path}: {error}")
+    temp_dir = Path(f"{candidate}.tmp")
+    try:
+        shutil.rmtree(temp_dir)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        _warn(console, f"Could not remove run-owned artifact {temp_dir}: {error}")
+
+
+def _reserve_candidate(output_db: Path, console: Console) -> Path:
+    """Reserve a unique sibling name, then remove the invalid zero-byte file.
+
+    The handle is closed before DuckDB opens the path. As with publication,
+    this assumes an ordinary local directory, not hostile path mutation.
+    """
+    fd, name = tempfile.mkstemp(
+        prefix=f".{output_db.name}.", suffix=".duckdb", dir=output_db.parent
+    )
+    candidate = Path(name)
+    try:
+        os.close(fd)
+        candidate.unlink()
+    except BaseException:
+        _cleanup_candidate(candidate, console)
+        raise
+    return candidate
+
+
+def _check_candidate_ready(candidate: Path) -> None:
+    if not candidate.is_file() or os.path.lexists(f"{candidate}.wal"):
+        raise ETLError(f"Candidate is not a finalized standalone database: {candidate}")
 
 
 def _dispose_engine(engine: Engine) -> None:
@@ -46,7 +101,7 @@ def _dispose_engine(engine: Engine) -> None:
 @contextmanager
 def _report_session(output_db: Path) -> Iterator[Session]:
     """Own summary resources without masking a query failure during cleanup."""
-    engine = create_engine(f"duckdb:///{output_db}")
+    engine = create_engine(f"duckdb:///{output_db}", connect_args={"read_only": True})
     try:
         session = sessionmaker(bind=engine)()
         try:
@@ -82,9 +137,13 @@ def run_etl(
         "-o",
         help="Path to the output DuckDB database file.",
         file_okay=True,
-        dir_okay=False,
-        writable=True,
-        resolve_path=True,
+        dir_okay=True,  # Preflight diagnoses unsuitable lexical destination entries.
+        resolve_path=False,
+    ),
+    replace: bool = typer.Option(
+        False,
+        "--replace",
+        help="Allow replacement of an existing output database.",
     ),
     log_level: str = typer.Option(
         "INFO",
@@ -99,6 +158,12 @@ def run_etl(
     """
     # Create a clearly styled console for the entire pipeline
     console = Console(highlight=False)  # Disable syntax highlighting for cleaner output
+
+    try:
+        preflight_output(input_file, output_db, replace=replace)
+    except ETLError as error:
+        console.print(f"Output preflight failed: {error}", style="red", markup=False)
+        raise typer.Exit(code=1) from error
 
     # Determine the numeric log level from the string option
     numeric_log_level = getattr(logging, log_level.upper(), logging.INFO)
@@ -116,23 +181,16 @@ def run_etl(
         )
     )
 
-    # --- Delete existing output DB if it exists ---
-    if output_db.exists():
-        console.print(
-            f"[yellow]Output database file exists. Deleting {output_db}...[/]"
-        )
-        try:
-            output_db.unlink()
-        except OSError as e:
-            console.print(f"[bold red]Error deleting existing database file:[/]\n{e}")
-            raise typer.Exit(code=1) from e
-
     # Create the progress manager with our console
     progress_manager = ProgressManager(console=console)
 
-    # Create a session factory for this run
-    engine = create_engine(f"duckdb:///{output_db}")
+    candidate: Path | None = None
+    engine: Engine | None = None
+    ready = False
+    published = False
     try:
+        candidate = _reserve_candidate(output_db, console)
+        engine = create_engine(f"duckdb:///{candidate}")
         with engine.begin() as connection:
             initialize_database(connection)
         dynamic_session_factory = sessionmaker(bind=engine)
@@ -210,7 +268,17 @@ def run_etl(
             f"Load: {storm_count:,} storms, {observation_count:,} observations",
         )
 
-        # Stop the progress before continuing with other output
+        # Closing the last connection checkpoints committed DuckDB state.
+        # Clear ownership before disposal so a failed close is not retried.
+        owned_engine, engine = engine, None
+        _dispose_engine(owned_engine)
+        _check_candidate_ready(candidate)
+        ready = True
+        publish_candidate(candidate, output_db, replace=replace)
+        published = True
+        _cleanup_candidate(candidate, console)
+
+        # All remaining presentation is optional after atomic publication.
         progress_manager.progress.stop()
         console.print("[bold green]✓ ETL pipeline completed successfully[/bold green]")
 
@@ -453,12 +521,16 @@ def run_etl(
                     )
 
             except Exception as report_err:
-                console.print(
-                    "[bold yellow]Warning: Could not generate summary report:[/]\n"
-                    f"{report_err}"
-                )
+                _warn(console, f"Could not generate summary report: {report_err}")
 
-    except ETLError as e:
+    except (Exception, KeyboardInterrupt) as e:
+        if published:
+            _warn(console, f"Output published successfully; presentation failed: {e}")
+            return
+        if ready:
+            _warn(
+                console, f"Publication failed; verified candidate retained: {candidate}"
+            )
         # Determine stage name based on exception type
         stage_name = "unknown"
         if isinstance(e, ExtractionError):
@@ -472,20 +544,25 @@ def run_etl(
 
         # Log the error using the logger associated with the determined stage
         logger = logging.getLogger(f"etl_pipeline.{stage_name}")
-        logger.error(f"ETL Error occurred in stage '{stage_name}': {e}", exc_info=True)
-        console.print(f"\n[bold red]ETL Error in stage '{stage_name}':[/] {e}")
-        raise typer.Exit(code=1) from e
-
-    except Exception as e:
-        # Log unexpected errors using a generic logger name (cli logger)
-        logger = logging.getLogger("etl_pipeline.cli")
-        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
-        console.print(f"\n[bold red]An unexpected error occurred:[/]\n{e}")
+        try:
+            logger.error(
+                f"ETL Error occurred in stage '{stage_name}': {e}", exc_info=True
+            )
+            console.print(
+                f"ETL Error in stage '{stage_name}': {e}", style="red", markup=False
+            )
+        except Exception:
+            print(f"ETL failed: {e}", file=sys.stderr)
         raise typer.Exit(code=1) from e
     finally:
-        # Closing the last DuckDB connection checkpoints committed state; no
-        # separate CHECKPOINT is needed for this single-writer lifecycle.
-        _dispose_engine(engine)
+        if engine is not None:
+            _dispose_engine(engine)
+        if candidate is not None and not ready:
+            _cleanup_candidate(candidate, console)
+        try:
+            progress_manager.progress.stop()
+        except Exception as error:
+            _warn(console, f"Could not stop progress display: {error}")
 
 
 # This allows running the script directly for debugging, but the primary
