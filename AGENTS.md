@@ -10,6 +10,7 @@
 - OpenSpec `tasks.md` is the sole exception to the managed block's Markdown-task prohibition: keep a spec-linked checklist with Beads IDs, not independent assignments, blockers, or live status. Reconcile checked items from verified Beads outcomes before archive; do not maintain another backlog.
 - Repository policy overrides generated defaults: `dolt.auto-commit` is explicitly `off`, not per-write as the managed block below claims. Local writes persist in the working set. Explicit approval is required for `bd dolt commit` as well as Git commits and all remote synchronization. Do not enable auto-push, auto-backup publication, or automatic staging.
 - Beads uses embedded mode and one active writer across machines. Its GitHub-backed remote is public: never store secrets or private logs in issues. Dolt history is separate from source branches; protecting `main` does not protect `refs/dolt/data`.
+- This repository uses the `etl` issue prefix (for example, `etl-ej0`). The managed block's `bd-42` / `bd-123` IDs are generic placeholders; substitute actual `etl-...` IDs from `bd ready --json` or `bd list --json` when using those examples.
 - Keep generated Beads markers and OpenSpec commands/skills intact; put repository overrides here and in `openspec/config.yaml`. Recheck integration after tool updates. The managed block's generic README/QUICKSTART links are upstream guidance; use our workflow guide locally.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:full hash:19cc25d9 -->
