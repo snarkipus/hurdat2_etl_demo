@@ -1,6 +1,7 @@
 """Unit tests for the Load stage implementation using pytest-mock."""
 
 from collections.abc import Callable  # Import Callable for type hint
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -123,6 +124,31 @@ def test_load_stage_process(load_stage, mock_uow, sample_transformed_data):
     # Just check that logger was called, not the specific messages
     # as they've changed in our new implementation
     assert load_stage.logger.info.call_count > 0
+
+
+@pytest.mark.parametrize(
+    "source_date",
+    [
+        datetime(2024, 1, 1, 23, 30, tzinfo=UTC),
+        datetime(2024, 1, 2, 5, 0, tzinfo=timezone(timedelta(hours=5, minutes=30))),
+        datetime(2024, 1, 1, 18, 30, tzinfo=timezone(timedelta(hours=-5))),
+        datetime(2024, 1, 1, 23, 30),
+    ],
+    ids=["utc", "positive-offset-next-day", "negative-offset", "naive-utc"],
+)
+def test_load_converts_date_to_naive_utc(
+    load_stage, mock_uow, sample_transformed_data, source_date
+):
+    """Persist UTC wall time without changing the transformed observation."""
+    storms, observations = sample_transformed_data
+    observation = observations[0].model_copy(update={"date": source_date})
+
+    load_stage._process((storms, [observation]))
+
+    stored = mock_uow.observations.add.call_args.args[0]
+    assert stored.date == datetime(2024, 1, 1, 23, 30)
+    assert stored.date.tzinfo is None
+    assert observation.date is source_date
 
 
 def test_load_stage_process_missing_lat_lon(load_stage, mock_uow, mocker):

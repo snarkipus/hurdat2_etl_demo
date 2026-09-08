@@ -4,6 +4,7 @@ Defines the Load stage of the ETL pipeline using the ETLStage base class.
 
 import logging
 from collections.abc import Callable
+from datetime import UTC
 from typing import Any
 
 from rich.console import Console
@@ -248,6 +249,12 @@ class LoadStage(ETLStage):
                 for obs in observations_list:
                     # Prepare observation data
                     observation_data = obs.model_dump(exclude={"location"})
+                    # Store naive UTC, not session-local time from an aware cast.
+                    # Already-naive inputs retain their existing UTC meaning.
+                    if obs.date.utcoffset() is not None:
+                        observation_data["date"] = obs.date.astimezone(UTC).replace(
+                            tzinfo=None
+                        )
 
                     # Generate geometry
                     latitude = obs.location.latitude

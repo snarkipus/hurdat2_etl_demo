@@ -19,11 +19,11 @@ own boundary, not every combination through the CLI on both platforms.
 Contracts: [source semantics](specs/hurdat2-source-contract/spec.md),
 [verification](specs/persisted-dataset-verification/spec.md).
 
-- [ ] 1.1 Isolate test working directories/logs and close test-owned database resources; verify current fixture tests run repeatedly without touching the developer's log, using the existing toolchain.
+- [x] 1.1 Isolate test working directories/logs and close test-owned database resources; verify current fixture tests run repeatedly without touching the developer's log, using the existing toolchain.
   Beads: `etl-0ix.1`.
-- [ ] 1.2 Establish an independently reopened baseline round trip with explicit UTC timestamp, knots/rounded mph, pressure, distinct radii, optional-null, and WKT expectations; verify it passes on today's implementation before structural/tool changes, investigating rather than blessing unexpected values.
-  Beads: `etl-0ix.1`.
-- [ ] 1.3 Reuse parser/extract tests and fill meaningful gaps for source read failures, skipped records, last-wins storm deduplication, empty loader inputs, and unchanged `270E -> 270.0`; verify accepted collections and known point ordinates without copying a spatial function's output as its expected value. No new source interface is required.
+- [x] 1.2 Establish an independently reopened baseline round trip with explicit UTC timestamp, knots/rounded mph, pressure, distinct radii, optional-null, and WKT expectations; verify it passes on today's implementation before structural/tool changes, investigating rather than blessing unexpected values.
+  Beads: `etl-0ix.1` (baseline oracle), `etl-0ix.16` (UTC persistence correction).
+- [x] 1.3 Reuse parser/extract tests and fill meaningful gaps for source read failures, skipped records, last-wins storm deduplication, empty loader inputs, and unchanged `270E -> 270.0`; verify accepted collections and known point ordinates without copying a spatial function's output as its expected value. No new source interface is required.
   Beads: `etl-0ix.1`.
 
 ## 2. Migration-Owned Loading and Resource Safety
