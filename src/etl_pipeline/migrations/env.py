@@ -1,12 +1,10 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
 from alembic.ddl.impl import DefaultImpl
+from sqlalchemy import engine_from_config, pool
+from sqlalchemy.engine import Connection
 
-# Import the Base from your models file
 from etl_pipeline.load.models import Base
 
 
@@ -23,7 +21,7 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-if config.config_file_name is not None:
+if config.config_file_name is not None and config.attributes.get("connection") is None:
     fileConfig(config.config_file_name)
 
 # add your model's MetaData object here
@@ -65,23 +63,32 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
+    Reuse a supplied connection, or own an engine for the developer CLI path.
 
     """
+    connection = config.attributes.get("connection")
+    if connection is not None:
+        run_migrations(connection)
+        return
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+    try:
+        with connectable.connect() as connection:
+            run_migrations(connection)
+    finally:
+        connectable.dispose()
 
-        with context.begin_transaction():
-            context.run_migrations()
+
+def run_migrations(connection: Connection) -> None:
+    """Run on the supplied connection without taking ownership of it."""
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
 
 
 if context.is_offline_mode():

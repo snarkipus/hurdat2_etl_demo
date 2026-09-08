@@ -30,7 +30,7 @@ Contracts: [source semantics](specs/hurdat2-source-contract/spec.md),
 
 Contract: [migration-backed loading](specs/migration-backed-loading/spec.md).
 
-- [ ] 2.1 Add packaged Alembic initialization with a supplied connection and no logging reset; verify fresh-to-head schema/constraint parity and one initial-to-head rename preserving representative values before replacing `create_all()`. Retain revision identities and test representative required-field/foreign-key enforcement and valid optional nulls.
+- [x] 2.1 Add packaged Alembic initialization with a supplied connection and no logging reset; verify fresh-to-head schema/constraint parity and one initial-to-head rename preserving representative values before replacing `create_all()`. Retain revision identities and test representative required-field/foreign-key enforcement and valid optional nulls.
   Beads: `etl-0ix.2`.
 - [ ] 2.2 Make migrations the explicit schema prerequisite, remove UoW schema creation, and fix exception-safe resource ownership using the existing transaction; verify migrated loading, missing-schema failure, and focused entry/body/commit/rollback cleanup paths without a new transaction manager.
   Beads: `etl-0ix.3`.
