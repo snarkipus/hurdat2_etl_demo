@@ -7,7 +7,7 @@
 
 A modern ETL (Extract, Transform, Load) pipeline for processing HURDAT2 hurricane track data into a structured DuckDB database.
 
-<img src="docs/progress_bars.png" alt="ETL Pipeline Demo" width="800">
+<img src="docs/assets/readme/progress_bars.png" alt="ETL Pipeline Demo" width="800">
 
 ## Overview
 
@@ -63,14 +63,15 @@ Options:
 - `--output`, `-o`: Path to the output DuckDB database file (required)
 - `--log-level`, `-l`: Logging level (defaults to INFO)
 
-<img src="docs/help.png" alt="ETL Pipeline Demo CLI Help" width="800">
+<img src="docs/assets/readme/help.png" alt="ETL Pipeline Demo CLI Help" width="800">
 
 ## Project Structure
 
 ```
 etl_pipeline/
 ├── data/                  # Default directory for storing output data (e.g., DuckDB file)
-├── docs/                  # Project documentation files (e.g., plans, diagrams)
+├── docs/                  # Workflow guide, README assets, and historical archive
+├── openspec/              # Accepted specifications and proposed changes
 ├── ref/                   # Reference materials (e.g., data format specs, source data files)
 ├── src/                   # Main source code directory
 │   └── etl_pipeline/      # Core package for the ETL pipeline
@@ -116,6 +117,13 @@ The ETL process generates a comprehensive summary report, including:
 - Longest-duration storms in the record
 
 ## Development
+
+See the [documentation map](docs/README.md) and
+[agentic workflow](docs/agentic-workflow.md) before starting a change.
+OpenSpec owns specification and intent; Beads drives implementation, with
+`tasks.md` reconciled continuously from verified outcomes. Historical plans and
+diagrams are retained in the [documentation archive](docs/archive/README.md),
+not treated as accepted requirements or an active backlog.
 
 ### Testing
 
