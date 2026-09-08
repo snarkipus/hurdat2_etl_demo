@@ -98,7 +98,7 @@ behavior under all six specs. Cleanup follows the boundaries in [design.md](desi
 
 Contracts: all six capability specs and the rollout in [design.md](design.md).
 
-- [ ] 8.1 Reuse the baseline value assertions for published new/replacement output, plus CLI refusal, one processing failure preserving old output, and one publication failure retaining a reopenable candidate; verify exit status and relevant file outcomes. Low-level fault variants remain in boundary tests, not a full stage/platform matrix.
+- [x] 8.1 Reuse the baseline value assertions for published new/replacement output, plus CLI refusal, one processing failure preserving old output, and one publication failure retaining a reopenable candidate; verify exit status and relevant file outcomes. Low-level fault variants remain in boundary tests, not a full stage/platform matrix.
   Beads: `etl-0ix.7`.
 - [ ] 8.2 Update active usage/developer guidance for the implemented toolchain, logs, migration ownership, replacement, manual recovery, geographic acceptance, and local operating limits; verify commands/links and preserve historical material and the proposal diagram.
   Beads: `etl-0ix.14`.
