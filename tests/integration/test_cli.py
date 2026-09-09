@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 from rich.text import Text
 from sqlalchemy import create_engine, text
 from sqlalchemy import event as sqlalchemy_event
@@ -26,6 +27,44 @@ runner = CliRunner()
 TEST_DATA_DIR = Path(__file__).parent.parent / "unit" / "data"
 TEST_INPUT_FILE = TEST_DATA_DIR / "test_data.txt"
 LOG_FILE = Path("logs/pipeline.log")
+
+
+def test_markup_paths_and_source_names_display_literally(tmp_path, mocker):
+    source = tmp_path / "[red]source.txt"
+    output = tmp_path / "[bold]output.duckdb"
+    name = "[red]A[/red][oops]B"
+    source.write_text(TEST_INPUT_FILE.read_text().replace("KAREN", name))
+    console = Console(width=200, record=True, highlight=False)
+    mocker.patch("etl_pipeline.cli.Console", return_value=console)
+
+    result = runner.invoke(app, ["--input", str(source), "--output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    rendered = console.export_text()
+    assert str(source) in rendered
+    assert str(output) in rendered
+    assert name in rendered
+    assert "Could not generate summary" not in rendered
+    assert "presentation failed" not in rendered
+    assert "Data committed to database" in rendered
+    assert "Processed 2 valid storms" in rendered
+    engine = create_engine(f"duckdb:///{output}", connect_args={"read_only": True})
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT name FROM storms WHERE storm_id = 'AL122007'")
+                ).scalar_one()
+                == name
+            )
+            assert (
+                connection.execute(
+                    text("SELECT COUNT(*) FROM observations")
+                ).scalar_one()
+                == 34
+            )
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture(autouse=True)

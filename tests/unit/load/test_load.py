@@ -2,9 +2,13 @@
 
 from collections.abc import Callable  # Import Callable for type hint
 from datetime import UTC, datetime, timedelta, timezone
+from io import StringIO
 
 import pytest
+from rich.console import Console
 
+from etl_pipeline.core import ProgressManager
+from etl_pipeline.exceptions import LoadError
 from etl_pipeline.load.load import LoadStage
 from etl_pipeline.load.unit_of_work import AbstractUnitOfWork
 
@@ -124,6 +128,47 @@ def test_load_stage_process(load_stage, mock_uow, sample_transformed_data):
     # Just check that logger was called, not the specific messages
     # as they've changed in our new implementation
     assert load_stage.logger.info.call_count > 0
+
+
+@pytest.mark.parametrize("exit_fails", [False, True])
+def test_committed_display_waits_for_uow_exit(
+    mock_uow_factory, mock_uow, sample_transformed_data, exit_fails
+):
+    output = StringIO()
+    console = Console(file=output, width=160, color_system=None)
+    manager = ProgressManager(console=console)
+    stage = LoadStage(uow_factory=mock_uow_factory, progress_manager=manager)
+    exited = False
+
+    def exit_uow(*args):
+        nonlocal exited
+        task = manager.progress.tasks[manager.tasks["commit"]]
+        assert task.total == 100
+        assert task.completed < task.total
+        assert task.description == "Saving data to database"
+        console.print(manager.progress)
+        assert "Data committed to database" not in output.getvalue()
+        if exit_fails:
+            raise RuntimeError("commit failed on UoW exit")
+        exited = True
+
+    mock_uow.__exit__.side_effect = exit_uow
+    if exit_fails:
+        with pytest.raises(LoadError, match="commit failed on UoW exit"):
+            stage.execute(sample_transformed_data)
+    else:
+        assert stage.execute(sample_transformed_data) == (2, 3)
+        assert exited
+
+    mock_uow.__exit__.assert_called_once_with(None, None, None)
+    console.print(manager.progress)
+    task = manager.progress.tasks[manager.tasks["commit"]]
+    if exit_fails:
+        assert not task.finished
+        assert "Data committed to database" not in output.getvalue()
+    else:
+        assert task.completed == task.total == 100
+        assert "Data committed to database" in output.getvalue()
 
 
 @pytest.mark.parametrize(

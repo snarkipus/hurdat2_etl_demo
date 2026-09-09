@@ -330,20 +330,11 @@ class LoadStage(ETLStage):
                         # For tests using mocks
                         self.progress_manager.update("commit", advance=80)
 
-                # Mark commit as complete
-                if self.progress_manager:
-                    # Ensure we're at 100%
-                    try:
-                        self.progress_manager.progress.update(
-                            self.progress_manager.tasks["commit"], completed=100
-                        )
-                    except (AttributeError, KeyError):
-                        # For tests using mocks
-                        self.progress_manager.update("commit", advance=10)
-                    # Complete the task
-                    self.progress_manager.complete_task(
-                        "commit", "Data committed to database"
-                    )
+            # UoW exit owns commit and can still fail after all records are added.
+            if self.progress_manager:
+                self.progress_manager.complete_task(
+                    "commit", "Data committed to database"
+                )
 
             self.logger.info(
                 f"Load complete: {storm_count} storms, {observation_count} observations"
