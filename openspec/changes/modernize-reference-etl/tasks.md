@@ -93,7 +93,7 @@ behavior under all six specs. Cleanup follows the boundaries in [design.md](desi
 
 - [x] 7.1 Add structlog-backed JSON-line diagnostics configured once per run, retaining Rich presentation and bridging library logs; verify expected lifecycle/error fields, log-level filtering, parseable output, and repeated-run context/handler isolation with focused tests. Reuse section 4's success/failure behavior rather than creating a logging recovery framework.
   Beads: `etl-0ix.10`.
-- [ ] 7.2 Review touched and directly related legacy source for behavior-preserving simplification, using `code-simplifier` where useful after tests establish coverage; verify the primary-reviewed diff improves clarity or removes duplication without unnecessary abstraction/SLOC growth, and rerun baseline assertions and relevant quality checks. Record reviewed scope and justified edits or a no-change conclusion; no blanket rewrite or line-count target.
+- [x] 7.2 Review touched and directly related legacy source for behavior-preserving simplification, using `code-simplifier` where useful after tests establish coverage; verify the primary-reviewed diff improves clarity or removes duplication without unnecessary abstraction/SLOC growth, and rerun baseline assertions and relevant quality checks. Record reviewed scope and justified edits or a no-change conclusion; no blanket rewrite or line-count target.
   Beads: `etl-0ix.13`.
 
 ## 8. Small End-to-End Acceptance and Handoff
