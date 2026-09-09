@@ -24,9 +24,9 @@ current behavior, and proposed direction; adding a file does not approve it.
 
 ## Target Architecture
 
-The [modernization diagram](../openspec/changes/modernize-reference-etl/assets/ETL_diagram_v2.png)
+The [modernization diagram](../openspec/changes/archive/2026-09-08-modernize-reference-etl/assets/ETL_diagram_v2.png)
 is a proposal reference, not a current-state authority. Its reviewed meaning and
-hash remain in the change's [design](../openspec/changes/modernize-reference-etl/design.md).
+hash remain in the change's [design](../openspec/changes/archive/2026-09-08-modernize-reference-etl/design.md).
 For future scoped changes, place their diagrams and any editable source
 under `openspec/changes/<change>/assets/` and reference them from `design.md`.
 Label retained components, proposed changes, and unresolved decisions explicitly.
