@@ -8,6 +8,10 @@ from pathlib import Path
 import pytest
 import structlog
 import typer
+from rich.console import Console
+from rich.panel import Panel
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
 from etl_pipeline.cli import (
@@ -18,6 +22,9 @@ from etl_pipeline.cli import (
     run_etl,
 )
 from etl_pipeline.exceptions import ETLError, LoadError
+from etl_pipeline.load.models import Observation as DbObservation
+from etl_pipeline.load.models import Storm as DbStorm
+from etl_pipeline.migrations import initialize_database
 from etl_pipeline.publication import publish_candidate
 from etl_pipeline.transform.models import Observation, Point, Storm, StormStatus
 from etl_pipeline.transform.transform import TransformStage
@@ -128,6 +135,88 @@ def test_zero_accepted_inputs(cli_boundary, tmp_path, rows, mocker):
     assert transformed.spy_return == []
     load.execute.assert_called_once_with(([], []))
     assert verify.call_args.args[1:] == (0, 0)
+
+
+@pytest.mark.parametrize(
+    ("wind", "band", "color"),
+    [
+        (0, "<34 kt", "blue"),
+        (33, "<34 kt", "blue"),
+        (34, "34-63 kt", "blue"),
+        (63, "34-63 kt", "blue"),
+        (64, "64-82 kt", "green"),
+        (82, "64-82 kt", "green"),
+        (83, "83-95 kt", "yellow"),
+        (95, "83-95 kt", "yellow"),
+        (96, "96-112 kt", "orange1"),
+        (112, "96-112 kt", "orange1"),
+        (113, "113-136 kt", "red"),
+        (136, "113-136 kt", "red"),
+        (137, ">=137 kt", "red"),
+        (180, ">=137 kt", "red"),
+    ],
+)
+def test_summary_peak_wind_bands_and_literal_names(
+    cli_boundary, mocker, tmp_path, wind, band, color
+):
+    """Exercise real summary SQL/Rich, not repeated full ETL/publication runs."""
+    source, extract, _, _ = cli_boundary
+    extract.execute.return_value = []
+    name = "[red]A[/red][oops]B"
+    console = Console(width=200, record=True, highlight=False)
+    printed = mocker.spy(console, "print")
+    mocker.patch("etl_pipeline.cli.Console", return_value=console)
+    engine = create_engine("duckdb:///:memory:")
+    try:
+        with engine.begin() as connection:
+            initialize_database(connection)
+        with Session(engine) as session:
+            session.add(
+                DbStorm(
+                    storm_id="AL012023",
+                    basin="AL",
+                    cyclone_number=1,
+                    year=2023,
+                    name=name,
+                    observations=[
+                        DbObservation(
+                            id=i,
+                            date=datetime(2023, 1, i),
+                            status=status,
+                            max_wind=speed,
+                            geom="POINT(-75.0 25.0)",
+                        )
+                        for i, status, speed in [(1, "TS", 0), (2, "EX", wind)]
+                    ],
+                )
+            )
+            session.commit()
+            report = mocker.patch("etl_pipeline.cli._report_session")
+            report.return_value.__enter__.return_value = session
+            result = CliRunner().invoke(
+                app,
+                ["--input", str(source), "--output", str(tmp_path / "summary.duckdb")],
+            )
+            assert result.exit_code == 0, result.output
+            output = console.export_text(clear=False)
+            assert "Could not generate summary" not in output
+            assert "Peak Recorded Wind Distribution (all statuses)" in output
+            assert "Wind-speed bands only; not storm classifications." in output
+            assert f"{band}: 1 storms" in output
+            assert output.count("kt: 1 storms") == 1
+            assert f"{name} (2023): 1.0 days" in output
+            assert "Hurricane Intensity" not in output
+            assert "Category" not in output
+            assert "Tropical Storm" not in output
+            # Verify the actual summary markup retains the band palette.
+            panels = [
+                call.args[0]
+                for call in printed.call_args_list
+                if call.args and isinstance(call.args[0], Panel)
+            ]
+            assert f"[{color}]{band}:[/{color}]" in panels[-1].renderable
+    finally:
+        engine.dispose()
 
 
 def test_migration_failure_prevents_loading_and_disposes(

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -193,9 +194,9 @@ def _run_etl(
     # Print initial messages to the console with cleaner formatting
     console.print(
         Panel(
-            f"""[bold]Input file:[/bold] [cyan]{input_file}[/cyan]
-[bold]Output database:[/bold] [cyan]{output_db}[/cyan]
-[bold]Log level:[/bold] [cyan]{log_level.upper()}[/cyan]
+            f"""[bold]Input file:[/bold] [cyan]{escape(str(input_file))}[/cyan]
+[bold]Output database:[/bold] [cyan]{escape(str(output_db))}[/cyan]
+[bold]Log level:[/bold] [cyan]{escape(log_level.upper())}[/cyan]
 [bold]Log file:[/bold] [cyan]logs/pipeline.log[/cyan]""",
             title="[bold]HURDAT2 ETL Pipeline[/bold]",
             border_style="blue",
@@ -383,7 +384,7 @@ def _run_etl(
                     """)
                     decade_stats = report_session.execute(decade_query).fetchall()
 
-                    # Get max wind speeds distribution
+                    # Peak recorded wind per storm, without filtering source statuses.
                     max_wind_query = text("""
                         WITH storm_max_winds AS (
                             SELECT 
@@ -399,32 +400,34 @@ def _run_etl(
                         )
                         SELECT 
                             CASE 
-                                WHEN max_wind < 64 THEN 'Tropical Storm'
-                                WHEN max_wind >= 64 AND max_wind < 83 THEN 'Category 1'
-                                WHEN max_wind >= 83 AND max_wind < 96 THEN 'Category 2'
-                                WHEN max_wind >= 96 AND max_wind < 113 THEN 'Category 3'
+                                WHEN max_wind < 34 THEN '<34 kt'
+                                WHEN max_wind < 64 THEN '34-63 kt'
+                                WHEN max_wind >= 64 AND max_wind < 83 THEN '64-82 kt'
+                                WHEN max_wind >= 83 AND max_wind < 96 THEN '83-95 kt'
+                                WHEN max_wind >= 96 AND max_wind < 113 THEN '96-112 kt'
                                 WHEN max_wind >= 113 AND max_wind < 137 THEN
-                                    'Category 4'
-                                WHEN max_wind >= 137 THEN 'Category 5'
+                                    '113-136 kt'
+                                WHEN max_wind >= 137 THEN '>=137 kt'
                                 ELSE 'Unknown'
-                            END AS intensity_category,
+                            END AS wind_band,
                             COUNT(*) AS count
                         FROM 
                             storm_max_winds
                         GROUP BY 
-                            intensity_category
+                            wind_band
                         ORDER BY 
                             CASE 
-                                WHEN intensity_category = 'Tropical Storm' THEN 1
-                                WHEN intensity_category = 'Category 1' THEN 2
-                                WHEN intensity_category = 'Category 2' THEN 3
-                                WHEN intensity_category = 'Category 3' THEN 4
-                                WHEN intensity_category = 'Category 4' THEN 5
-                                WHEN intensity_category = 'Category 5' THEN 6
+                                WHEN wind_band = '<34 kt' THEN 1
+                                WHEN wind_band = '34-63 kt' THEN 2
+                                WHEN wind_band = '64-82 kt' THEN 3
+                                WHEN wind_band = '83-95 kt' THEN 4
+                                WHEN wind_band = '96-112 kt' THEN 5
+                                WHEN wind_band = '113-136 kt' THEN 6
+                                WHEN wind_band = '>=137 kt' THEN 7
                                 ELSE 0
                             END
                     """)
-                    intensity_stats = report_session.execute(max_wind_query).fetchall()
+                    wind_stats = report_session.execute(max_wind_query).fetchall()
 
                     # Get longest-duration storms
                     longest_storms_query = text("""
@@ -511,28 +514,29 @@ def _run_etl(
                                 summary_text += f"""
     [yellow]{decade}s:[/yellow] {count:,} storms"""
 
-                    # Add intensity categories
-                    if intensity_stats:
+                    # Bands describe wind only, not tropical-cyclone classification.
+                    if wind_stats:
                         summary_text += """
 
-[bold]Hurricane Intensity Distribution[/bold]"""
-                        for category, count in intensity_stats:
-                            # Color-code categories based on severity
-                            if category == "Tropical Storm":
+[bold]Peak Recorded Wind Distribution (all statuses)[/bold]
+    Wind-speed bands only; not storm classifications."""
+                        for band, count in wind_stats:
+                            # Retain the existing wind-threshold colors.
+                            if band in ("<34 kt", "34-63 kt"):
                                 color = "blue"
-                            elif category == "Category 1":
+                            elif band == "64-82 kt":
                                 color = "green"
-                            elif category == "Category 2":
+                            elif band == "83-95 kt":
                                 color = "yellow"
-                            elif category == "Category 3":
-                                color = "orange"
-                            elif category == "Category 4" or category == "Category 5":
+                            elif band == "96-112 kt":
+                                color = "orange1"
+                            elif band in ("113-136 kt", ">=137 kt"):
                                 color = "red"
                             else:
                                 color = "white"
 
                             summary_text += f"""
-    [{color}]{category}:[/{color}] {count:,} storms"""
+    [{color}]{band}:[/{color}] {count:,} storms"""
 
                     # Add longest lasting storms
                     if longest_storms:
@@ -547,7 +551,7 @@ def _run_etl(
                                 else "UNNAMED"
                             )
                             summary_text += f"""
-    [cyan]{storm_name} ({year}):[/cyan] {duration:.1f} days"""
+    [cyan]{escape(storm_name)} ({year}):[/cyan] {duration:.1f} days"""
 
                     # Print the summary panel with expanded sizing
                     console.print(

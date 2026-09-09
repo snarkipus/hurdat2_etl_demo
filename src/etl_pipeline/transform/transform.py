@@ -72,30 +72,6 @@ class TransformStage(ETLStage):
                     "transform_group", "Analyzing storm data structure", total_rows
                 )
 
-            # Process in batches for smooth progress updates
-            batch_size = min(max(total_rows // 20, 100), 1000)  # Adaptive batch size
-
-            processed = 0
-            for _ in range(0, total_rows, batch_size):
-                processed += min(batch_size, total_rows - processed)
-                if self.progress_manager:
-                    # Calculate percentage for smooth progress
-                    percentage = min(int((processed / total_rows) * 100), 100)
-                    try:
-                        self.progress_manager.progress.update(
-                            self.progress_manager.tasks["transform_group"],
-                            completed=percentage,
-                            description=(
-                                f"Analyzing data: {processed:,}/{total_rows:,} rows"
-                            ),
-                        )
-                    except (AttributeError, KeyError):
-                        # For tests using mocks without full implementation
-                        self.progress_manager.update(
-                            "transform_group", completed=percentage
-                        )
-
-            # Now actually group the data (no UI updates during this)
             storms_data = self._group_into_storms(data)
 
             # Show completion with storm count
@@ -121,26 +97,6 @@ class TransformStage(ETLStage):
                 try:
                     storm = self._create_storm(header_row, observation_rows)
                     storms.append(storm)
-                    batch_count += 1
-
-                    # Update progress in batches
-                    if self.progress_manager and batch_count >= batch_size:
-                        # Calculate percentage for accurate display
-                        percentage = min(int(((i + 1) / storms_total) * 100), 100)
-                        try:
-                            self.progress_manager.progress.update(
-                                self.progress_manager.tasks["transform_storms"],
-                                completed=percentage,
-                                description=(
-                                    f"Processing storms: {i + 1:,}/{storms_total:,}"
-                                ),
-                            )
-                        except (AttributeError, KeyError):
-                            # For tests using mocks without full implementation
-                            self.progress_manager.update(
-                                "transform_storms", advance=batch_count
-                            )
-                        batch_count = 0
 
                 except (TransformError, ValidationError) as e:
                     self.logger.error(f"Error processing storm {i + 1}: {e}")
@@ -149,20 +105,20 @@ class TransformStage(ETLStage):
                         f"Unexpected error creating storm {i + 1}: {e}", exc_info=True
                     )
 
-            # Ensure we show 100% completion
-            if self.progress_manager:
-                # Set to 100% complete
-                try:
-                    self.progress_manager.progress.update(
-                        self.progress_manager.tasks["transform_storms"],
-                        completed=100,
-                        description=f"Processed {len(storms):,} valid storms",
+                # Count attempted groups, including rejected storms, as actual work.
+                batch_count += 1
+                if self.progress_manager and (
+                    batch_count >= batch_size or i + 1 == storms_total
+                ):
+                    self.progress_manager.update(
+                        "transform_storms",
+                        advance=0,
+                        completed=i + 1,
+                        description=f"Processing storms: {i + 1:,}/{storms_total:,}",
                     )
-                except (AttributeError, KeyError):
-                    # For tests using mocks
-                    self.progress_manager.update("transform_storms", completed=100)
+                    batch_count = 0
 
-                # Mark as complete
+            if self.progress_manager and storms_total > 0:
                 self.progress_manager.complete_task(
                     "transform_storms", f"Processed {len(storms):,} valid storms"
                 )
@@ -190,15 +146,15 @@ class TransformStage(ETLStage):
         storms = []
         current_header: list[str] | None = None
         observations: list[list[str]] = []
+        total_rows = len(raw_data)
+        batch_size = min(max(total_rows // 20, 100), 1000)
 
         for i, row in enumerate(raw_data):
             # Skip empty or blank rows
             if not row or not any(field.strip() for field in row):
                 self.logger.debug(f"Skipping empty row {i + 1}")
-                continue
-
             # Check if the current row is a header
-            if is_header_line(row):
+            elif is_header_line(row):
                 # If a storm was being tracked, store it before starting the new one
                 if current_header is not None:
                     if observations:
@@ -217,6 +173,16 @@ class TransformStage(ETLStage):
             else:
                 # Row is not a header and no storm is active
                 self.logger.warning(f"Skipping row {i + 1} before first valid header")
+
+            if self.progress_manager and (
+                (i + 1) % batch_size == 0 or i + 1 == total_rows
+            ):
+                self.progress_manager.update(
+                    "transform_group",
+                    advance=0,
+                    completed=i + 1,
+                    description=f"Analyzing data: {i + 1:,}/{total_rows:,} rows",
+                )
 
         # Add the last tracked storm after the loop finishes
         if current_header is not None:

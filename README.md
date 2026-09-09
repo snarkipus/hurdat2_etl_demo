@@ -215,7 +215,9 @@ The ETL process generates a comprehensive summary report, including:
 
 - Total storms and observations processed
 - Full date range of the dataset
-- Hurricane categorization by intensity
+- Peak recorded wind per storm across all observation statuses, in neutral bands
+  (<34, 34-63, 64-82, 83-95, 96-112, 113-136, and >=137 knots); these bands do not
+  assign tropical-cyclone status or classification from wind alone
 - Decade-by-decade distribution of hurricane activity
 - Longest-duration storms in the record
 

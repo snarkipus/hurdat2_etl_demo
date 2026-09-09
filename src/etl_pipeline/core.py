@@ -164,7 +164,7 @@ class ProgressManager:
         total = task.total if task.total is not None else 0
 
         # Force completed to 100%
-        if total > 0:
+        if task.total is not None:
             # Update with direct completion value
             self.progress.update(task_id, completed=total, visible=True)
         else:

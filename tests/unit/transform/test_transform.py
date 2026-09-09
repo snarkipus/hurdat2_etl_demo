@@ -3,11 +3,84 @@
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
+from etl_pipeline.core import ProgressManager
 from etl_pipeline.exceptions import TransformError, ValidationError
 from etl_pipeline.transform.models import Observation, Storm
 
 # Removed unittest.mock import
 from etl_pipeline.transform.transform import TransformStage
+
+
+def test_group_progress_follows_actual_rows(mocker):
+    manager = ProgressManager()
+    stage = TransformStage(progress_manager=manager)
+    rows = [SAMPLE_HEADER_1, *([SAMPLE_OBS_1_1] * 203), BLANK_ROW]
+    checked = 0
+    from etl_pipeline.transform.parser import is_header_line
+
+    def check_row(row):
+        nonlocal checked
+        task = manager.progress.tasks[manager.tasks["transform_group"]]
+        assert task.completed == (checked // 100) * 100
+        assert not task.finished
+        checked += 1
+        return is_header_line(row)
+
+    mocker.patch(
+        "etl_pipeline.transform.transform.is_header_line", side_effect=check_row
+    )
+    updates = mocker.spy(manager, "update")
+    assert len(stage.execute(rows)) == 1
+    assert checked == 204
+    group = manager.progress.tasks[manager.tasks["transform_group"]]
+    assert group.completed == group.total == 205
+    assert group.percentage == 100
+    assert [
+        call.kwargs["completed"]
+        for call in updates.call_args_list
+        if call.args[0] == "transform_group"
+    ] == [100, 200, 205]
+
+
+@pytest.mark.parametrize(("storm_count", "batch_size"), [(2, 1), (205, 2)])
+def test_storm_progress_counts_attempts_including_rejections(
+    mocker, storm_count, batch_size
+):
+    manager = ProgressManager()
+    stage = TransformStage(progress_manager=manager)
+    groups = [(SAMPLE_HEADER_1, [SAMPLE_OBS_1_1])] * storm_count
+    mocker.patch.object(stage, "_group_into_storms", return_value=groups)
+    create_storm = stage._create_storm
+    attempted = 0
+
+    def create(header, observations):
+        nonlocal attempted
+        task = manager.progress.tasks[manager.tasks["transform_storms"]]
+        assert task.total == storm_count
+        completed = attempted - attempted % batch_size
+        assert task.completed == completed
+        assert task.percentage == completed / storm_count * 100
+        assert not task.finished
+        attempted += 1
+        if attempted == 1:
+            raise TransformError("Rejected test storm")
+        return create_storm(header, observations)
+
+    mocker.patch.object(stage, "_create_storm", side_effect=create)
+    assert len(stage.execute(RAW_DATA_VALID)) == 1  # Existing last-wins deduplication.
+    assert attempted == storm_count
+    task = manager.progress.tasks[manager.tasks["transform_storms"]]
+    assert task.completed == task.total == storm_count
+    assert task.description == f"Processed {storm_count - 1:,} valid storms"
+
+
+def test_empty_transform_progress_has_zero_completed_rows():
+    manager = ProgressManager()
+    assert TransformStage(progress_manager=manager).execute([]) == []
+    task = manager.progress.tasks[manager.tasks["transform_group"]]
+    assert task.completed == task.total == 0
+    assert "transform_storms" not in manager.tasks
+
 
 # --- Sample Data ---
 SAMPLE_HEADER_1 = ["AL011851", "UNNAMED", "14", ""]
