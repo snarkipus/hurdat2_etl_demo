@@ -2,7 +2,7 @@
 
 Run: uv run --locked python tests/installed_package_smoke.py --temp-root /tmp/opencode
 Requires uv, Python 3.13 and access to the package index/DuckDB Spatial download
-(or their caches). Builds wheel FROM sdist via uv build's default sequence.
+(or their caches). Checks the sdist allowlist before building its wheel.
 Only the fixture and shared independent oracle cross into the temporary workspace;
 no application source, pytest config, or Alembic config is copied. Temporary files
 are removed on exit; commands, artifact hashes and installed versions go to stdout.
@@ -17,7 +17,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 RESOURCES = {
     "etl_pipeline/cli.py",
@@ -27,6 +27,47 @@ RESOURCES = {
     "etl_pipeline/migrations/versions/53dc9abc36a8_initial_schema_setup.py",
     "etl_pipeline/migrations/versions/6accd1b8062d_rename_location_wkt_to_geom_in_.py",
 }
+
+SDIST_ROOT_FILES = {
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "PKG-INFO",
+}
+
+
+def validate_sdist(sdist: Path) -> None:
+    """Reject unexpected members using headers only, without extracting contents."""
+    root = sdist.name.removesuffix(".tar.gz")
+    names: set[str] = set()
+    with tarfile.open(sdist) as archive:
+        for member in archive:
+            path = PurePosixPath(member.name)
+            assert not path.is_absolute() and ".." not in path.parts, member.name
+            assert path.parts and path.parts[0] == root, member.name
+            relative = path.relative_to(root)
+            name = relative.as_posix()
+            if member.isdir() and name in {".", "src", "src/etl_pipeline", "tests"}:
+                continue
+            assert member.isfile() or member.isdir(), member.name
+            allowed_tree = name.startswith(("src/etl_pipeline/", "tests/"))
+            # Hatchling 1.27 force-includes the root ignore file, even with ignore-vcs.
+            assert name in SDIST_ROOT_FILES | {".gitignore"} or allowed_tree, (
+                member.name
+            )
+            if allowed_tree:
+                assert not any(
+                    part.startswith(".") or part in {"__pycache__", "node_modules"}
+                    for part in relative.parts
+                ), member.name
+                assert relative.suffix not in {".pyc", ".pyo", ".pyd"}, member.name
+            if member.isfile():
+                names.add(name)
+    assert SDIST_ROOT_FILES | {f"src/{name}" for name in RESOURCES} <= names
+    print(f"Sdist allowlist: PASS ({len(names)} files)", flush=True)
+
 
 PROBE = """
 import importlib.metadata as metadata
@@ -96,9 +137,11 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="etl-wheel-", dir=root) as temporary:
         work = Path(temporary)
         dist = work / "dist"
-        run(uv, "build", "--out-dir", str(dist), cwd=repo)
-        (wheel,) = dist.glob("*.whl")
+        run(uv, "build", "--sdist", "--out-dir", str(dist), cwd=repo)
         (sdist,) = dist.glob("*.tar.gz")
+        validate_sdist(sdist)
+        run(uv, "build", "--wheel", str(sdist), "--out-dir", str(dist), cwd=work)
+        (wheel,) = dist.glob("*.whl")
         with zipfile.ZipFile(wheel) as archive:
             assert RESOURCES <= set(archive.namelist())
             (entrypoint,) = (
@@ -108,11 +151,6 @@ def main() -> None:
                 "etl-pipeline = etl_pipeline.cli:app"
                 in archive.read(entrypoint).decode()
             )
-        with tarfile.open(sdist) as archive:
-            names = {
-                name.split("/", 1)[1] for name in archive.getnames() if "/" in name
-            }
-            assert {f"src/{name}" for name in RESOURCES} <= names
         for artifact in (wheel, sdist):
             print(
                 artifact.name,

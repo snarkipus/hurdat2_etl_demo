@@ -32,6 +32,28 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/etl_pipeline"]
 
+[tool.hatch.build.targets.sdist]
+# Use explicit cache exclusions rather than local VCS ignore rules.
+ignore-vcs = true
+only-include = [
+    "/src/etl_pipeline",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/uv.lock",
+    "/.python-version",
+]
+exclude = [
+    "**/__pycache__",
+    "**/*.py[cod]",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/.mypy_cache",
+    "**/.hypothesis",
+    "**/.coverage*",
+]
+
 [build-system]
 requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
