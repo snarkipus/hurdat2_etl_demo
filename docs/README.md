@@ -8,6 +8,7 @@ current behavior, and proposed direction; adding a file does not approve it.
 | --- | --- |
 | [Project README](../README.md) | Current setup, CLI usage, output acceptance/recovery, and development checks; executable code/configuration determines behavior. |
 | [Agentic workflow](agentic-workflow.md) | Current development, verification, and cross-machine handoff conventions. |
+| [Releases](releases/README.md) | Maintainer release procedure and versioned release notes; publication evidence is recorded in Beads. |
 | [OpenSpec specs](../openspec/specs/) | Accepted requirements captured through OpenSpec; not a claim of complete retrospective coverage. |
 | [OpenSpec changes](../openspec/changes/) | Proposed requirements, designs, and derived implementation checklists. Beads owns execution state. |
 | [README assets](assets/readme/) | Presentation images for the root GitHub README, not specifications. |
