@@ -8,7 +8,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, insert, text
 from sqlalchemy.exc import IntegrityError
 
 from etl_pipeline.load.models import Base, Observation, Storm
@@ -109,7 +109,7 @@ def test_initial_to_head_rename_preserves_values(engine):
             ).scalar_one()
             == INITIAL
         )
-        connection.execute(Storm.__table__.insert(), storm())
+        connection.execute(insert(Storm), storm())
         connection.execute(
             text("""
             INSERT INTO observations
@@ -188,17 +188,17 @@ def observation():
 def test_required_values_and_relationship_enforced(engine, invalid, message):
     with engine.begin() as connection:
         initialize_database(connection)
-        connection.execute(Storm.__table__.insert(), storm())
+        connection.execute(insert(Storm), storm())
     with pytest.raises(IntegrityError, match=message):
         with engine.begin() as connection:
-            connection.execute(Observation.__table__.insert(), observation() | invalid)
+            connection.execute(insert(Observation), observation() | invalid)
 
 
 def test_optional_values_can_be_null(engine):
     with engine.begin() as connection:
         initialize_database(connection)
-        connection.execute(Storm.__table__.insert(), storm())
-        connection.execute(Observation.__table__.insert(), observation())
+        connection.execute(insert(Storm), storm())
+        connection.execute(insert(Observation), observation())
     with engine.connect() as connection:
         row = connection.execute(Observation.__table__.select()).one()._mapping
         for column in Observation.__table__.columns:

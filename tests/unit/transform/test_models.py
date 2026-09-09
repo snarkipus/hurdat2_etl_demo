@@ -51,32 +51,33 @@ class TestPoint:
         """Test coordinates outside valid ranges."""
         # Test invalid latitude
         with pytest.raises(ValidationError) as exc_info:
-            Point(latitude="91.0N", longitude="90.0W")
+            Point.model_validate({"latitude": "91.0N", "longitude": "90.0W"})
         assert "Latitude 91.0 out of range [0, 90]" in str(exc_info.value)
 
         # Test invalid longitude
         with pytest.raises(ValidationError) as exc_info:
-            Point(latitude="45.0N", longitude="381.0E")
+            Point.model_validate({"latitude": "45.0N", "longitude": "381.0E"})
         assert "Longitude 381.0 out of range [0, 360]" in str(exc_info.value)
 
         # Test individual coordinate validation
         with pytest.raises(ValidationError) as exc_info:
-            Point(latitude="91.0N", longitude="45.0W")
+            Point.model_validate({"latitude": "91.0N", "longitude": "45.0W"})
         assert "Latitude 91.0 out of range [0, 90]" in str(exc_info.value)
 
         with pytest.raises(ValidationError) as exc_info:
-            Point(latitude="45.0N", longitude="381.0E")
+            Point.model_validate({"latitude": "45.0N", "longitude": "381.0E"})
         assert "Longitude 381.0 out of range [0, 360]" in str(exc_info.value)
 
     def test_point_construction(self):
         """Test Point construction with valid coordinates."""
-        point = Point(latitude="29.1N", longitude="90.2W")
+        # Raw HURDAT2 strings enter through validation; model fields are floats.
+        point = Point.model_validate({"latitude": "29.1N", "longitude": "90.2W"})
         assert point.latitude == 29.1
         assert point.longitude == -90.2
 
     def test_eastern_longitude_is_not_wrapped(self):
         """Normalization is unchanged; geographic acceptance is a separate gate."""
-        point = Point(latitude="25.0N", longitude="270E")
+        point = Point.model_validate({"latitude": "25.0N", "longitude": "270E"})
         assert point.longitude == 270.0
         assert point.latitude == 25.0
 
@@ -96,7 +97,7 @@ class TestPoint:
         ]
         for lat_str, lon_str in invalid_formats:
             with pytest.raises(ValidationError):
-                Point(latitude=lat_str, longitude=lon_str)
+                Point.model_validate({"latitude": lat_str, "longitude": lon_str})
 
 
 # Storm Model Tests
@@ -141,7 +142,7 @@ class TestObservation:
             date=datetime(2021, 8, 29, 12, 0, tzinfo=UTC),  # Add tzinfo
             record_identifier="L",
             status=StormStatus.HURRICANE,
-            location=Point(latitude="29.1N", longitude="90.2W"),
+            location=Point.model_validate({"latitude": "29.1N", "longitude": "90.2W"}),
             max_wind=130,
             min_pressure=931,
             ne34=100,
@@ -173,7 +174,9 @@ class TestObservation:
                 storm_id="AL01TEST",  # Add required storm_id
                 date=datetime(2021, 8, 29, 12, 0, tzinfo=UTC),  # Add tzinfo
                 status=StormStatus.HURRICANE,
-                location=Point(latitude="29.1N", longitude="90.2W"),
+                location=Point.model_validate(
+                    {"latitude": "29.1N", "longitude": "90.2W"}
+                ),
                 max_wind=max_wind,
                 min_pressure=931,
             )
@@ -227,7 +230,9 @@ class TestObservation:
                 date=datetime(2021, 8, 29, 12, 0, tzinfo=UTC),  # Add tzinfo
                 record_identifier="L",
                 status=StormStatus.HURRICANE,
-                location=Point(latitude="29.1N", longitude="90.2W"),
+                location=Point.model_validate(
+                    {"latitude": "29.1N", "longitude": "90.2W"}
+                ),
                 max_wind=-1,  # Invalid negative value
                 min_pressure=931,
             )
@@ -238,7 +243,7 @@ class TestObservation:
             date=datetime(2021, 8, 29, 12, 0, tzinfo=UTC),  # Add tzinfo
             record_identifier="L",
             status=StormStatus.HURRICANE,
-            location=Point(latitude="29.1N", longitude="90.2W"),
+            location=Point.model_validate({"latitude": "29.1N", "longitude": "90.2W"}),
             max_wind=130,
             min_pressure=931,
             ne34=None,  # Optional fields set to None

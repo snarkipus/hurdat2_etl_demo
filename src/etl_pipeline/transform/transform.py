@@ -85,7 +85,9 @@ class TransformStage(ETLStage):
                         self.progress_manager.progress.update(
                             self.progress_manager.tasks["transform_group"],
                             completed=percentage,
-                            description=f"Analyzing data: {processed:,}/{total_rows:,} rows",
+                            description=(
+                                f"Analyzing data: {processed:,}/{total_rows:,} rows"
+                            ),
                         )
                     except (AttributeError, KeyError):
                         # For tests using mocks without full implementation
@@ -129,7 +131,9 @@ class TransformStage(ETLStage):
                             self.progress_manager.progress.update(
                                 self.progress_manager.tasks["transform_storms"],
                                 completed=percentage,
-                                description=f"Processing storms: {i + 1:,}/{storms_total:,}",
+                                description=(
+                                    f"Processing storms: {i + 1:,}/{storms_total:,}"
+                                ),
                             )
                         except (AttributeError, KeyError):
                             # For tests using mocks without full implementation
@@ -168,7 +172,8 @@ class TransformStage(ETLStage):
             unique_storms = list(unique_storms_dict.values())
 
             self.logger.info(
-                f"Transformation complete: {len(unique_storms)} unique storms processed."
+                f"Transformation complete: {len(unique_storms)} unique storms "
+                "processed."
             )
             return unique_storms
 
@@ -200,7 +205,8 @@ class TransformStage(ETLStage):
                         storms.append((current_header, observations))
                     else:
                         self.logger.warning(
-                            f"Header {current_header[0].strip()} found with no observations."
+                            f"Header {current_header[0].strip()} "
+                            "found with no observations."
                         )
                 # Start tracking the new storm
                 current_header = row
@@ -251,7 +257,8 @@ class TransformStage(ETLStage):
                     valid_observations.append(observation)
                 except (TransformError, ValidationError) as e:
                     self.logger.error(
-                        f"Skipping observation {i + 1} for storm {storm_id_for_log}: {e}"
+                        f"Skipping observation {i + 1} "
+                        f"for storm {storm_id_for_log}: {e}"
                     )
                 except Exception as e:
                     self.logger.error(

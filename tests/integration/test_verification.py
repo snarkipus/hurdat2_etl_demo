@@ -11,7 +11,7 @@ from etl_pipeline.load.load import LoadStage
 from etl_pipeline.load.unit_of_work import SqlAlchemyUnitOfWork
 from etl_pipeline.load.verification import verify_persisted_dataset
 from etl_pipeline.migrations import initialize_database
-from etl_pipeline.transform.models import Observation, Point, Storm
+from etl_pipeline.transform.models import Observation, Point, Storm, StormStatus
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def committed_engine(tmp_path):
             Observation(
                 storm_id=storm.storm_id,
                 date=datetime(2024, 1, 1, hour, tzinfo=UTC),
-                status="TS",
+                status=StormStatus.TROPICAL_STORM,
                 max_wind=40,
                 location=Point(longitude=-75, latitude=25),
             )

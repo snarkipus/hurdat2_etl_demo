@@ -157,11 +157,11 @@ Run from the repository root. Commands are verified against `pyproject.toml`, CL
 - Setup: Python `>=3.13,<4`, pinned to 3.13 in `.python-version`; `uv python install 3.13`, then `uv sync --locked` (includes dev tools; uv 0.12.10 validated). Preserve `uv.lock`; generate dependency changes with `uv lock`, never hand-edit it. Builds use PEP 621/Hatchling; Poetry is not required.
 - CLI: `uv run --locked etl-pipeline --input /path/to/hurdat2.txt --output /path/to/new.duckdb`. This is a single-command Typer app: no `run` or `run-etl` subcommand.
 - Lint: `uv run --locked ruff check src tests`; formatting check: `uv run --locked ruff format --check src tests`; apply formatting: `uv run --locked ruff format src tests`.
-- Types: `uv run --locked mypy src tests` (`mypy_path = "src"`; tests have relaxed overrides).
+- Types: `uv run --locked basedpyright` (standard diagnostics for `src`, including migrations, and `tests`; `extraPaths = ["src"]`). No blanket ignores; prefer typed library APIs and raw-input validation boundaries over suppressions.
 - Full suite: `uv run --locked pytest`. Default options enforce 80% coverage with branch measurement and write `.coverage`, `htmlcov/`, and `lcov.info`.
 - Focused test: `uv run --locked pytest --no-cov tests/unit/transform/test_parser.py::test_parse_cyclone_id`. Use `--no-cov` for focused runs to avoid the whole-project coverage gate; this is not a substitute for the full suite.
 - Integration suite: `uv run --locked pytest --no-cov tests/integration`. DuckDB is embedded, but load/CLI tests execute `INSTALL spatial` and `LOAD spatial`; extension installation may require network access.
-- Configured pre-commit order is Ruff fix/format, mypy, pytest. Hooks modify files; hook Ruff remains pinned to `v0.9.7`, unlike the project's locked `0.11.2`, so results can differ. Hook alignment and the BasedPyright migration are separate work; the pytest hook uses uv.
+- Hooks: `uv run --locked pre-commit run --all-files` (install with `uv run --locked pre-commit install`). Local system hooks run Ruff fix/format, BasedPyright, then pytest through the same locked project uv tools, always checking the full configured scope, even for configuration-only changes. Hooks can modify files; inspect changes and rerun hooks and non-fixing gates. BasedPyright 1.40.0, Ruff 0.11.2, and pre-commit 4.2.0 are validated; no separate remote tool environments.
 
 ## Architecture & Gotchas
 
@@ -176,5 +176,5 @@ Run from the repository root. Commands are verified against `pyproject.toml`, CL
 
 ## Local Conventions
 
-- Follow `pyproject.toml` over prose: Ruff enables `E,F,B,S,I,UP`; migrations and `ref/` are excluded, and tests allow assertions. Mypy ignores errors in migration versions and is not blanket strict mode.
+- Follow `pyproject.toml` over prose: Ruff enables `E,F,B,S,I,UP`; migrations and `ref/` are excluded from Ruff, and tests allow assertions. BasedPyright uses standard mode for source/tests without migration or test exclusions and rejects unnecessary type-ignore comments.
 - Existing code mixes absolute and relative imports. Preserve the surrounding style rather than performing unrelated import rewrites.

@@ -72,6 +72,7 @@ class ExtractStage(ETLStage):
             self.logger.error(f"Error accessing file '{file_path}': {e}", exc_info=True)
             raise ExtractionError(f"Could not access source file: {file_path}") from e
 
+        reader = None
         try:
             # Register a sub-task if we have a progress manager
             if self.progress_manager:
@@ -161,11 +162,7 @@ class ExtractStage(ETLStage):
             self.logger.info(f"Extraction completed. {self.row_count} rows processed.")
 
         except csv.Error as e:
-            line_num = (
-                getattr(reader, "line_num", "unknown")
-                if "reader" in locals()
-                else "unknown"
-            )
+            line_num = getattr(reader, "line_num", "unknown")
             self.logger.error(
                 f"CSV parsing error in '{file_path}' near line {line_num}: {e}",
                 exc_info=True,

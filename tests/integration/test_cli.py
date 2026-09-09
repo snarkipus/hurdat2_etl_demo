@@ -82,7 +82,7 @@ def test_run_etl_success(tmp_path, cli_engines, replace):
             print("CLI Exception:\n", result.exception)
             import traceback
 
-            traceback.print_tb(result.exc_info[2])
+            traceback.print_tb(result.exception.__traceback__)
 
     # 1. Assert successful execution
     assert result.exit_code == 0, (

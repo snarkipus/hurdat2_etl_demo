@@ -123,8 +123,9 @@ class TestExtractStage:
         mocker.patch("builtins.open", mock_file)
 
         input_data = {"file_path": "fake_path.csv"}
-        with pytest.raises(ExtractionError):
+        with pytest.raises(ExtractionError, match="near line unknown") as exc_info:
             list(extract_stage._process(input_data))
+        assert exc_info.value.__cause__ is mock_csv_reader.side_effect
 
         # Verify error was logged
         extract_stage.logger.error.assert_called()
