@@ -121,21 +121,30 @@ Use one checkout and one active implementation session. Parallel worktrees and
 concurrent embedded-database writers are deferred, including across machines.
 Read-only research can be delegated without creating competing implementations.
 
-Before starting a new task, inspect `git status --short --branch`. Preserve any
-existing edits and finish or hand off the current branch before switching.
-From a clean checkout:
+Default to one feature branch and PR per coherent change, which may contain
+several related Beads. Implement those Beads sequentially, normally recording
+one source Git commit per completed, verified Bead when commits are authorized.
+Beads track execution, commits provide implementation checkpoints, and PRs are
+review/merge boundaries; they need not be one-to-one. A no-change review needs
+an outcome record, not an empty commit or its own PR. Include any checklist
+reconciliation in the relevant commit rather than a separate bookkeeping PR.
+
+Before starting a new coherent change, inspect `git status --short --branch`.
+Preserve existing edits and finish or hand off the current branch before
+switching. Continue related Beads on that branch; a new Bead does not require
+another branch or PR. To start a new change from a clean checkout:
 
 ```bash
 git fetch origin
 git switch main
 git merge --ff-only origin/main
-git switch --no-track -c feature/descriptive-task origin/main
+git switch --no-track -c feature/descriptive-change origin/main
 bd prime
 bd ready --json
 bd update <issue-id> --claim --json
 ```
 
-Use `fix/`, `chore/`, or `docs/` when more descriptive. Include the Beads ID and,
+Use `fix/`, `chore/`, or `docs/` when more descriptive. Include the covered Beads IDs and,
 when applicable, the OpenSpec change path in the eventual PR. Never implement
 directly on `main`. Do not force-push or rewrite history. GitHub requires PRs, blocks force pushes and
 deletion, and applies protection to admins; mandatory approvals are zero for
@@ -143,10 +152,35 @@ solo-maintainer use. [CI](../.github/workflows/ci.yml) now runs Linux quality/wh
 and targeted Windows runtime/publication jobs; making their checks required is
 a separate repository-settings decision, not a workflow side effect.
 
-Before handoff, run relevant non-fixing verification, review the full diff and
-new files, and update Beads with results and blockers. A local implementation
-being complete does not mean its PR has merged. Do not stage, commit, publish,
-open a PR, or synchronize Dolt unless the current user request authorizes it.
+At each Bead boundary, verify its acceptance criteria with relevant tests and
+quality checks, review the diff, record the outcome in Beads, and reconcile its
+OpenSpec checklist scope. Keep that work traceable in the commit message when
+committing. Reuse existing acceptance coverage rather than adding duplicate
+tests or manufacturing edits merely to satisfy a task boundary.
+
+Run full quality/coverage, installed-package, and hosted-platform checks at
+meaningful integration checkpoints and final change acceptance, and whenever
+the affected scope requires them. Focused runs do not replace final gates or
+override an individual Bead's acceptance criteria. Existing commit hooks still
+run their configured full checks; do not skip them to reduce ceremony. Repeat
+checks when code, dependencies, configuration, or review fixes invalidate prior
+evidence, not solely because another status update occurred.
+
+Before a PR or change-level handoff, review the full branch diff, all included
+commits, and new files. Summarize covered Beads, validation, remaining blockers,
+and publication steps awaiting approval. Prefer separate PRs only when there is
+a concrete delivery, risk, size, or review boundary; avoid both PR-per-Bead
+ceremony and an oversized epic PR that is difficult to review.
+
+A local implementation being complete does not mean its PR has merged. Do not
+stage, commit, publish, open/merge a PR, or synchronize Dolt without explicit
+authorization. Approval may cover a named change or sequence of Beads and
+specific operations; record that scope and do not repeatedly ask within it.
+Permission for local commits alone does not authorize pushing, merging, or
+remote Beads synchronization. Ask when scope or required authority expands,
+not at every mechanical checkpoint. No authorization carries into unrelated
+work by default; local Dolt auto-commit remains separate bookkeeping.
+
 After an approved PR merges, return to clean `main` and fast-forward before
 starting another branch. Beads state is shared across branches, not isolated
 by `git switch`.
