@@ -81,9 +81,9 @@ Contract: [automated checks](specs/development-baseline/spec.md).
 CI can begin with current commands and switch with section 5; no dual-toolchain
 support is required. Reuse the tests and installed-wheel smoke above.
 
-- [ ] 6.1 Add PR/main-push Linux CI for locked non-fixing quality checks, the full coverage suite, and the installed-wheel smoke; verify workflow configuration and successful jobs with stable check names and no error suppression. A separate failing-CI demonstration harness is not required.
+- [x] 6.1 Add PR/main-push Linux CI for locked non-fixing quality checks, the full coverage suite, and the installed-wheel smoke; verify workflow configuration and successful jobs with stable check names and no error suppression. A separate failing-CI demonstration harness is not required.
   Beads: `etl-0ix.12`.
-- [ ] 6.2 Add targeted Python 3.13 Windows coverage for real DuckDB creation/replacement and file-handle/publication behavior; verify green jobs with explicit Spatial setup and no skipped installation errors, not the full Linux failure matrix.
+- [x] 6.2 Add targeted Python 3.13 Windows coverage for real DuckDB creation/replacement and file-handle/publication behavior; verify green jobs with explicit Spatial setup and no skipped installation errors, not the full Linux failure matrix.
   Beads: `etl-0ix.12`.
 
 ## 7. Structured Diagnostics and Bounded Cleanup
