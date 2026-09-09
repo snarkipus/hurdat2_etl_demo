@@ -102,7 +102,9 @@ Contracts: all six capability specs and the rollout in [design.md](design.md).
 
 - [x] 8.1 Reuse the baseline value assertions for published new/replacement output, plus CLI refusal, one processing failure preserving old output, and one publication failure retaining a reopenable candidate; verify exit status and relevant file outcomes. Low-level fault variants remain in boundary tests, not a full stage/platform matrix.
   Beads: `etl-0ix.7`.
-- [ ] 8.2 Update active usage/developer guidance for the implemented toolchain, logs, migration ownership, replacement, manual recovery, geographic acceptance, and local operating limits; verify commands/links and preserve historical material and the proposal diagram.
+- [x] 8.2 Update active usage/developer guidance for the implemented toolchain, logs, migration ownership, replacement, manual recovery, geographic acceptance, and local operating limits; verify commands/links and preserve historical material and the proposal diagram.
   Beads: `etl-0ix.14`.
 - [ ] 8.3 Run final locked quality/coverage gates and strict OpenSpec validation, and reconcile each checklist item's scope with verified Beads outcomes; verify green targeted platform jobs, unchanged tracked files after non-fixing checks, and no scope mismatch before separately authorized sync/archive/publication.
   Beads: `etl-0ix.15`.
+- [ ] 8.4 Correct the reviewed Rich presentation defects before final acceptance: use matching progress units tied to actual transform work, report commitment only after successful UoW exit, label peak recorded wind bands accurately including below 34 knots, and escape dynamic paths/names. Preserve the visual layout and persistence contracts; verify focused regressions and existing value/publication acceptance without a terminal-layout matrix.
+  Beads: `etl-0ix.18` (prerequisite of `etl-0ix.15`).

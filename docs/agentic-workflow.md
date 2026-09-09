@@ -13,15 +13,20 @@ boundary between current behavior and proposed target architecture. A small
 documentation-only cleanup can be tracked directly in Beads without inventing
 application requirements or an OpenSpec change.
 
-This bootstrap does not change application code, Python tooling, dependencies,
-logging, migrations, CI, or pre-commit hooks. The previous baseline verification
-passed 111 tests (83.57% coverage) and mypy; five Ruff E501 violations in
-`src/etl_pipeline/transform/transform.py` remain separate follow-up work.
+The original workflow bootstrap did not change application code, Python tooling,
+dependencies, logging, migrations, CI, or pre-commit hooks. Its historical baseline
+passed 111 tests (83.57% coverage) and mypy, with five Ruff E501 violations in
+`src/etl_pipeline/transform/transform.py`. Those are bootstrap observations, not
+current tool choices or outstanding lint status. For the implemented Python
+3.13/uv/BasedPyright baseline, hooks, builds and platform CI, use
+[current development commands](../README.md#development) and root `AGENTS.md`.
+For JSON logging, migration-owned output, replacement and manual recovery, read
+[current usage and operating limits](../README.md#usage).
 
 ## Tooling
 
 Bootstrap versions: OpenCode 1.18.29, OpenSpec 1.12.0, Beads 1.2.2, Dolt 2.3.2,
-and Node.js 24.20.0. These are external tools, not Poetry dependencies.
+and Node.js 24.20.0. These are external tools, not project Python dependencies.
 Use compatible versions on other machines; review schema migrations before
 upgrading Beads. Do not silently upgrade global tools during project work.
 
@@ -42,7 +47,8 @@ Restart OpenCode after initialization or updates so new guidance is loaded.
 
 Do not repeat `bd init` on another machine to recreate existing issue history.
 Use the fresh-clone procedure below instead. Do not reinstall Beads Git hooks:
-this repository already has pre-commit hooks, which remain unchanged.
+this repository already has [project pre-commit hooks](../.pre-commit-config.yaml),
+now using the locked uv tools rather than the bootstrap-era environments.
 
 ### OpenCode Beads Plugin
 
@@ -133,7 +139,9 @@ Use `fix/`, `chore/`, or `docs/` when more descriptive. Include the Beads ID and
 when applicable, the OpenSpec change path in the eventual PR. Never implement
 directly on `main`. Do not force-push or rewrite history. GitHub requires PRs, blocks force pushes and
 deletion, and applies protection to admins; mandatory approvals are zero for
-solo-maintainer use. Required CI checks remain a separate follow-up.
+solo-maintainer use. [CI](../.github/workflows/ci.yml) now runs Linux quality/wheel
+and targeted Windows runtime/publication jobs; making their checks required is
+a separate repository-settings decision, not a workflow side effect.
 
 Before handoff, run relevant non-fixing verification, review the full diff and
 new files, and update Beads with results and blockers. A local implementation
@@ -274,7 +282,8 @@ Once explicitly authorized, publish the local history already managed by Beads:
 bd dolt push
 ```
 
-Do not run this publication sequence before the bootstrap diff is approved.
+The original bootstrap required approval of its diff before publication; ongoing
+publication still requires explicit authorization for the current handoff.
 After publication and source configuration availability, on a fresh clone:
 
 ```bash
@@ -319,7 +328,9 @@ openspec validate --all --strict --no-interactive
 git diff --check
 ```
 
-An empty OpenSpec installation has no specs or changes to validate; that is not
-evidence of application correctness. Read `AGENTS.md` for actual Python checks
-and their side effects. Do not run fixing hooks merely to validate this tooling
-bootstrap. Review new files too: ordinary `git diff` omits untracked files.
+At bootstrap the empty OpenSpec installation had no specs or changes to validate;
+that was not evidence of application correctness. Validate the current artifacts
+with the strict command above. Read `AGENTS.md` for actual Python checks and their
+side effects. Fixing hooks are not a read-only documentation check: when running
+them for acceptance, inspect the diff and rerun non-fixing gates. Review new files
+too: ordinary `git diff` omits untracked files.
