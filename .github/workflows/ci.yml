@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  linux-quality:
+    name: Linux quality and wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.10"
+          enable-cache: false
+      # uv reads the shared .python-version pin; no separate Python toolchain.
+      - name: Install pinned Python
+        run: uv python install
+      - name: Install locked project and development tools
+        run: uv sync --locked
+      # No skip/fallback: download, load, and query errors must fail the job.
+      - name: Install and load DuckDB Spatial
+        run: >-
+          uv run --locked python -c "import duckdb; c = duckdb.connect();
+          c.execute('INSTALL spatial'); c.execute('LOAD spatial');
+          assert c.execute('SELECT ST_X(ST_Point(1, 2))').fetchone() == (1.0,);
+          c.close()"
+      - name: Lint (non-fixing)
+        run: uv run --locked ruff check src tests
+      - name: Format (non-fixing)
+        run: uv run --locked ruff format --check src tests
+      - name: Type check
+        run: uv run --locked basedpyright
+      - name: Full suite with 80% branch-measured coverage
+        run: uv run --locked pytest
+      - name: Installed-wheel smoke outside checkout
+        run: uv run --locked python tests/installed_package_smoke.py --temp-root "$RUNNER_TEMP"
+
+  windows-runtime:
+    name: Windows runtime and publication
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.10"
+          enable-cache: false
+      - name: Install pinned Python
+        run: uv python install
+      - name: Install locked project and development tools
+        run: uv sync --locked
+      - name: Install and load DuckDB Spatial
+        run: >-
+          uv run --locked python -c "import duckdb; c = duckdb.connect();
+          c.execute('INSTALL spatial'); c.execute('LOAD spatial');
+          assert c.execute('SELECT ST_X(ST_Point(1, 2))').fetchone() == (1.0,);
+          c.close()"
+      # Explicit node IDs avoid privileged symlinks and the full failure matrix.
+      # Real CLI runs assert values/migrations, pool disposal, subprocess reopen,
+      # and no WAL/candidate leftovers for both new and replacement publication.
+      # One denied replacement retains a reopenable, verified real DuckDB file.
+      # Closed-file helper tests cover atomic primitives, collision and WAL refusal.
+      - name: Targeted DuckDB and file lifecycle tests
+        run: >-
+          uv run --locked pytest --no-cov
+          tests/integration/test_cli.py::test_run_etl_success
+          "tests/integration/test_cli.py::test_failed_replacement_preserves_old_output[publication]"
+          tests/unit/test_publication.py::test_atomic_publication
+          tests/unit/test_publication.py::test_collision_at_link_is_not_overwritten
+          tests/unit/test_publication.py::test_destination_wal_blocks_preflight_and_publication
+          tests/unit/test_publication.py::test_denied_primitive_has_no_fallback
