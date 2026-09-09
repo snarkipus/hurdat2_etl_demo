@@ -242,7 +242,7 @@ class TransformStage(ETLStage):
             # Parse the header using the dedicated parser function
             parsed_header = parse_header_line(header_row)
             if not parsed_header:
-                raise TransformError(f"Invalid header format: {header_row}")
+                raise TransformError(f"Invalid header format for {storm_id_for_log}")
 
             basin, cyclone_number, year, name = parsed_header
             # Generate the storm_id
@@ -285,10 +285,14 @@ class TransformStage(ETLStage):
         except PydanticValidationError as e:
             # Catch validation errors during the final Storm object creation
             self.logger.error(
-                f"Storm object validation failed for {storm_id_for_log}: {e.errors()}"
+                f"Storm object validation failed for {storm_id_for_log}: "
+                f"{e.errors(include_input=False, include_context=False)}"
             )
             # Wrap Pydantic error in our domain-specific ValidationError
-            raise ValidationError(f"Storm validation failed: {e}") from e
+            raise ValidationError(
+                "Storm validation failed: "
+                f"{e.errors(include_input=False, include_context=False)}"
+            ) from e
         except TransformError as e:
             # Propagate TransformErrors raised explicitly
             raise e
@@ -309,7 +313,7 @@ class TransformStage(ETLStage):
             parsed_data = parse_track_line(row)
             if not parsed_data:
                 raise TransformError(
-                    f"Parser failed to extract essential data from row: {row}"
+                    f"Parser failed to extract essential data for storm {storm_id}"
                 )
 
             # Add the storm_id to the parsed data before validation
@@ -322,7 +326,8 @@ class TransformStage(ETLStage):
         except PydanticValidationError as e:
             # Catch validation errors during Observation instantiation
             raise ValidationError(
-                f"Observation validation failed for row {row}: {e}"
+                f"Observation validation failed for {storm_id}: "
+                f"{e.errors(include_input=False, include_context=False)}"
             ) from e
         except TransformError as e:
             # Propagate TransformError raised by the parser
@@ -330,7 +335,7 @@ class TransformStage(ETLStage):
         except Exception as e:
             # Catch any other unexpected error during observation creation
             self.logger.error(
-                f"Unexpected error creating observation from row {row}: {e}",
+                f"Unexpected error creating observation for {storm_id}: {e}",
                 exc_info=True,
             )
             raise TransformError(f"Unexpected error creating observation: {e}") from e

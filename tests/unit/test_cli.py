@@ -1,12 +1,22 @@
 """Characterize accepted loader inputs without replaying database integration."""
 
+import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import structlog
+import typer
 from typer.testing import CliRunner
 
-from etl_pipeline.cli import _check_candidate_ready, _reserve_candidate, _warn, app
+from etl_pipeline.cli import (
+    _check_candidate_ready,
+    _reserve_candidate,
+    _warn,
+    app,
+    run_etl,
+)
 from etl_pipeline.exceptions import ETLError, LoadError
 from etl_pipeline.publication import publish_candidate
 from etl_pipeline.transform.models import Observation, Point, Storm, StormStatus
@@ -101,6 +111,7 @@ def test_last_wins_and_exact_flattened_loader_inputs(cli_boundary, tmp_path, moc
     assert transformed.spy_return == storms
     load.execute.assert_called_once_with((storms, [revised_obs, other_obs]))
     assert verify.call_args.args[1:] == (2, 2)
+    assert str(INVALID_OBS_ROW) not in Path("logs/pipeline.log").read_text()
 
 
 @pytest.mark.parametrize(
@@ -180,6 +191,15 @@ def test_verification_uses_snapshot_and_failure_prevents_success_and_report(
     assert "completed successfully" not in result.output
     report.assert_not_called()
     verify.call_args.args[0].dispose.assert_called_once()
+    events = [
+        json.loads(line) for line in Path("logs/pipeline.log").read_text().splitlines()
+    ]
+    error = next(event for event in events if event["severity"] == "error")
+    assert error["operation"] == "verification"
+    assert error["stage"] is None  # Not the preceding load stage.
+    assert error["error_type"] == "ETLError"
+    assert error["error"] == "Persisted count mismatch"
+    assert "publication_completed" not in [event["event"] for event in events]
 
 
 @pytest.mark.parametrize("report_failure", [None, "factory", "query"])
@@ -214,6 +234,15 @@ def test_cli_owns_both_engines(cli_boundary, mocker, tmp_path, report_failure):
     report_engine.dispose.assert_called_once()
     if report_failure:
         assert f"report {report_failure} failed" in result.output
+        events = [
+            json.loads(line)
+            for line in Path("logs/pipeline.log").read_text().splitlines()
+        ]
+        warning = next(event for event in events if event["severity"] == "warning")
+        assert warning["operation"] == "summary"
+        assert warning["error_type"] == "RuntimeError"
+        assert f"report {report_failure} failed" in warning["error"]
+        assert any(event["event"] == "publication_completed" for event in events)
     if report_failure == "query":
         report_session.close.assert_called_once()
 
@@ -234,7 +263,8 @@ def test_incomplete_candidate_cleanup_preserves_old_output(
     candidates = []
     engine = mocker.MagicMock()
 
-    def create(url):
+    def create(url, *, hide_parameters):
+        assert hide_parameters is True
         candidate = Path(url.removeprefix("duckdb:///"))
         assert candidate.parent == output.parent
         assert not candidate.exists()  # Never give DuckDB the reservation file.
@@ -281,7 +311,8 @@ def test_publication_boundary_follows_verification_and_disposal(
     events = []
     candidates = []
 
-    def create(url):
+    def create(url, *, hide_parameters):
+        assert hide_parameters is True
         candidate = Path(url.removeprefix("duckdb:///"))
         assert not candidate.exists()
         candidate.write_bytes(b"candidate")
@@ -302,6 +333,7 @@ def test_publication_boundary_follows_verification_and_disposal(
     def publish(candidate, destination, *, replace):
         assert events == ["migrate", "verify", "dispose"]
         assert not destination.exists()
+        assert "publication_completed" not in Path("logs/pipeline.log").read_text()
         if late_wal:
             Path(f"{destination}.wal").write_bytes(b"external WAL")
         publish_candidate(candidate, destination, replace=replace)
@@ -404,8 +436,158 @@ def test_candidate_reservation_and_standalone_gate(tmp_path, mocker):
 def test_warning_sink_failures_do_not_change_outcome(mocker):
     console = mocker.Mock()
     console.print.side_effect = RuntimeError("render failed")
+    logger = mocker.patch("etl_pipeline.cli.logging.getLogger").return_value
+    logger.warning.side_effect = OSError("log unavailable")
     fallback = mocker.patch(
         "etl_pipeline.cli.print", create=True, side_effect=BrokenPipeError("closed")
     )
     _warn(console, "Output already published")
     fallback.assert_called_once()
+
+
+def test_repeated_cli_runs_restore_context_handlers_and_filter_libraries(
+    cli_boundary, mocker, tmp_path
+):
+    source, extract, _, _ = cli_boundary
+    extract.execute.return_value = []
+    root = logging.getLogger()
+    handlers = root.handlers[:]
+    level = root.level
+    library = logging.getLogger("etl_test_library")
+    # An explicitly verbose child bypasses root's logger threshold; the owned
+    # handler must still enforce the CLI level on propagated records.
+    mocker.patch.object(library, "level", logging.DEBUG)
+    owned_handlers = []
+
+    def migration(_):
+        owned_handlers.extend(
+            handler for handler in root.handlers if handler not in handlers
+        )
+        library.debug("library_debug %s", "detail")
+        library.warning("library_warning")
+
+    mocker.patch("etl_pipeline.cli.initialize_database", side_effect=migration)
+    verify = mocker.patch(
+        "etl_pipeline.cli.verify_persisted_dataset",
+        side_effect=ETLError("first run failed"),
+    )
+    with structlog.contextvars.bound_contextvars(
+        run_id="caller", stage="caller", private="not a run field"
+    ):
+        caller_context = structlog.contextvars.get_contextvars()
+        first = CliRunner().invoke(
+            app,
+            [
+                "--input",
+                str(source),
+                "--output",
+                str(tmp_path / "first"),
+                "--log-level",
+                "WARNING",
+            ],
+        )
+        assert first.exit_code == 1
+        assert root.handlers == handlers and root.level == level
+        assert structlog.contextvars.get_contextvars() == caller_context
+        first_events = [
+            json.loads(line)
+            for line in Path("logs/pipeline.log").read_text().splitlines()
+        ]
+        assert {event["severity"] for event in first_events} == {"warning", "error"}
+        assert [event["event"] for event in first_events].count("library_warning") == 1
+
+        verify.side_effect = None
+        second = CliRunner().invoke(
+            app,
+            [
+                "--input",
+                str(source),
+                "--output",
+                str(tmp_path / "second"),
+                "--log-level",
+                "DEBUG",
+            ],
+        )
+        assert second.exit_code == 0, second.output
+        assert "completed successfully" in second.output
+        assert root.handlers == handlers and root.level == level
+        assert structlog.contextvars.get_contextvars() == caller_context
+
+    events = [
+        json.loads(line) for line in Path("logs/pipeline.log").read_text().splitlines()
+    ]
+    second_events = events[len(first_events) :]
+    assert len({event["run_id"] for event in first_events}) == 1
+    assert len({event["run_id"] for event in second_events}) == 1
+    assert first_events[0]["run_id"] != second_events[0]["run_id"]
+    assert all(
+        event["run_id"] != "caller" and "private" not in event for event in events
+    )
+    assert [event["event"] for event in second_events].count("library_warning") == 1
+    debug = next(
+        event for event in second_events if event["event"] == "library_debug detail"
+    )
+    assert debug["severity"] == "debug" and debug["operation"] == "migration"
+    assert "stage" not in debug
+    assert len(owned_handlers) == 2
+    assert all(
+        isinstance(handler, logging.FileHandler) and handler.stream is None
+        for handler in owned_handlers
+    )
+
+
+def test_stage_construction_does_not_configure_logging(tmp_path):
+    root = logging.getLogger()
+    logger = logging.getLogger("etl_pipeline.transform")
+    handlers, level = logger.handlers[:], logger.level
+    root_handlers, root_level = root.handlers[:], root.level
+    TransformStage(log_level=logging.DEBUG)
+    TransformStage(log_level=logging.ERROR)
+    assert not (tmp_path / "logs").exists()
+    assert (logger.handlers, logger.level) == (handlers, level)
+    assert (root.handlers, root.level) == (root_handlers, root_level)
+
+
+@pytest.mark.parametrize("fail_load", [False, True])
+def test_log_close_failure_preserves_outcome_and_caller(
+    cli_boundary, mocker, tmp_path, capsys, fail_load
+):
+    source, extract, _, load = cli_boundary
+    extract.execute.return_value = []
+    primary = LoadError("primary load failure")
+    if fail_load:
+        load.execute.side_effect = primary
+    candidate = tmp_path / ".owned.duckdb"
+    candidate.write_bytes(b"verified")
+    output = tmp_path / "published.duckdb"
+    mocker.patch("etl_pipeline.cli._reserve_candidate", return_value=candidate)
+    mocker.patch("etl_pipeline.cli.publish_candidate", side_effect=publish_candidate)
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    closed = []
+    original_close = logging.FileHandler.close
+
+    def failed_close(handler):
+        closed.append(handler)
+        original_close(handler)
+        raise OSError("injected close failure")
+
+    mocker.patch.object(logging.FileHandler, "close", failed_close)
+    with structlog.contextvars.bound_contextvars(run_id="caller", stage="caller"):
+        context = structlog.contextvars.get_contextvars()
+        if fail_load:
+            with pytest.raises(typer.Exit) as caught:
+                run_etl(source, output, False, "DEBUG")
+            assert caught.value.exit_code == 1
+            assert caught.value.__cause__ is primary
+            assert not output.exists()
+        else:
+            run_etl(source, output, False, "DEBUG")
+            assert output.read_bytes() == b"verified"
+        assert structlog.contextvars.get_contextvars() == context
+        assert root.level == level and root.handlers == handlers
+    assert len(closed) == 1 and closed[0] not in root.handlers
+    assert (
+        "Warning: Could not close pipeline log: injected close failure"
+        in capsys.readouterr().err
+    )

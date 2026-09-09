@@ -1,17 +1,22 @@
+import json
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy import event as sqlalchemy_event
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 from typer.testing import CliRunner
 
 # Import the app instance from the new location within the package
 from etl_pipeline.cli import app
-from etl_pipeline.exceptions import ETLError
+from etl_pipeline.exceptions import ETLError, LoadError
+from etl_pipeline.load.load import LoadStage
 
 # Create a CliRunner instance to invoke commands
 runner = CliRunner()
@@ -237,21 +242,94 @@ def test_run_etl_success(tmp_path, cli_engines, replace):
     # 4. Assert log file was created
     assert LOG_FILE.exists(), f"Log file not found at {LOG_FILE}"
 
-    # 5. Assert basic content in the log file (optional, but good practice)
+    # Reuse the independently reopened value run for the diagnostic contract.
+    events = [json.loads(line) for line in LOG_FILE.read_text().splitlines()]
+    assert len({event["run_id"] for event in events}) == 1
+    for event in events:
+        assert datetime.fromisoformat(event["timestamp"]).utcoffset() == timedelta(0)
+        assert event["severity"] not in {"error", "critical"}
+        assert event["operation"]
+        assert "\x1b" not in event["event"]
+    outcomes = [
+        event["event"] for event in events if event["logger"] == "etl_pipeline.cli"
+    ]
+    assert outcomes == [
+        "preflight_completed",
+        "migration_completed",
+        "extraction_completed",
+        "transformation_completed",
+        "loading_completed",
+        "verification_completed",
+        "finalization_completed",
+        "publication_completed",
+    ]
+    for stage in ("extract", "transform", "load"):
+        stage_events = [event for event in events if event.get("stage") == stage]
+        assert any(
+            event["event"] == f"Starting execution of stage: {stage}"
+            for event in stage_events
+        )
+        assert any(
+            event["event"] == f"Completed execution of stage: {stage}"
+            for event in stage_events
+        )
+    assert any(
+        event["logger"].startswith("alembic.") and event["operation"] == "migration"
+        for event in events
+    )
+    assert all(engine.hide_parameters for engine in cli_engines)
+
+
+def test_wrapped_observation_batch_failure_hides_bound_parameters(tmp_path, mocker):
+    """Exercise real ORM batching and DBAPI wrapping, not a pre-hidden exception."""
+    execute = mocker.spy(LoadStage, "execute")
+
+    def fail_observation_insert(
+        connection, cursor, statement, parameters, context, many
+    ):
+        # Keep the real bound observation batch; make the DBAPI reject its SQL.
+        return statement.replace(
+            "INSERT INTO observations", "INSERT INTO missing_observations"
+        ), parameters
+
+    sqlalchemy_event.listen(
+        Engine, "before_cursor_execute", fail_observation_insert, retval=True
+    )
+    output = tmp_path / "output.duckdb"
     try:
-        log_content = LOG_FILE.read_text()
-        # Check for messages logged by the stages
-        assert "Starting execution of stage: extract" in log_content
-        assert "Completed execution of stage: extract" in log_content
-        assert "Starting execution of stage: transform" in log_content
-        assert "Completed execution of stage: transform" in log_content
-        assert "Starting execution of stage: load" in log_content
-        assert "Completed execution of stage: load" in log_content
-        # Ensure no major errors were logged (simple check)
-        assert "ERROR" not in log_content.upper()
-        assert "CRITICAL" not in log_content.upper()
-    except Exception as log_err:
-        pytest.fail(f"Failed to read or verify log file content: {log_err}")
+        result = runner.invoke(
+            app,
+            [
+                "--input",
+                str(TEST_INPUT_FILE),
+                "--output",
+                str(output),
+                "--log-level",
+                "DEBUG",
+            ],
+        )
+    finally:
+        sqlalchemy_event.remove(
+            Engine, "before_cursor_execute", fail_observation_insert
+        )
+    assert result.exit_code == 1
+    assert not output.exists()
+    wrapped = execute.spy_exception
+    assert isinstance(wrapped, LoadError)
+    database_error = wrapped.__cause__
+    assert isinstance(database_error, DBAPIError)
+    assert database_error.params and "AL122007" in str(database_error.params)
+    assert len(database_error.params) > 1
+    assert "POINT(-35.9 10.0)" in str(database_error.params)
+    assert database_error.hide_parameters is True
+    logs = LOG_FILE.read_text()
+    assert "AL122007" not in logs + result.output
+    assert "POINT(-35.9 10.0)" not in logs + result.output
+    assert "SQL parameters hidden due to hide_parameters=True" in logs
+    events = [json.loads(line) for line in logs.splitlines()]
+    errors = [entry for entry in events if entry["severity"] == "error"]
+    assert any(entry.get("error_type") == "LoadError" for entry in errors)
+    assert any("missing_observations" in entry.get("exception", "") for entry in errors)
 
 
 @pytest.mark.parametrize("failure", ["verification", "publication"])

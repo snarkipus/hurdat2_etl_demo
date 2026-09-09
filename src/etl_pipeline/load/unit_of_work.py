@@ -82,7 +82,7 @@ class AbstractUnitOfWork(abc.ABC):
 
 # Default session factory configured for the DuckDB database
 DEFAULT_SESSION_FACTORY = sessionmaker(
-    bind=create_engine("duckdb:///data/hurdat.duckdb")
+    bind=create_engine("duckdb:///data/hurdat.duckdb", hide_parameters=True)
 )
 
 
@@ -172,5 +172,5 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
         """Executes a raw SQL statement using the SQLAlchemy session."""
         if not self.session:
             raise RuntimeError("Session not initialized. Use within a 'with' block.")
-        logger.debug(f"Executing statement: {statement} with params: {params}")
+        logger.debug("Executing database statement.")
         return self.session.execute(text(statement), params=params)
