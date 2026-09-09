@@ -26,7 +26,8 @@ git diff --check
 ```
 
 Confirm installed metadata matches the intended version. The smoke builds a
-wheel **from the sdist**, verifies packaged migration resources, and tests an
+wheel **from the sdist**, rejects members outside the explicit sdist allowlist
+before building that wheel, verifies packaged migration resources, and tests an
 isolated installed CLI against `tests/baseline.py`; its temporary artifacts are
 deleted. It does **not** validate a separately built/uploaded release wheel.
 Use Python 3.13 without `-O` or `PYTHONOPTIMIZE`; package/Spatial failures are
@@ -43,6 +44,9 @@ or tracked contents change; earlier tests do not cover a different revision.
 
 Substitute the approved version below. Use a fresh empty artifact directory
 outside the checkout (`$OUT`, an absolute path), and a separate scratch directory.
+Build release artifacts from a fresh clone of the exact approved revision,
+without initializing Beads or installing agent tooling/local state. A clean
+`git status` alone does not exclude ignored private files from packaging.
 Verify the release tag does not already exist locally or remotely and review all
 existing tags before publication. Do not move or overwrite a published tag.
 With tag authorization and the tested SHA recorded as `$SHA`:
@@ -74,6 +78,20 @@ Default `uv build` builds the sdist then builds the wheel from it. Require exact
 artifacts, and inspect their PKG-INFO/METADATA versions, Python requirement,
 entry point and packaged migrations. Do not rebuild after acceptance/hashing.
 
+Review **every sdist member** against `pyproject.toml`'s `only-include` boundary:
+`src/etl_pipeline/`, `tests/`, `README.md`, `LICENSE`, `pyproject.toml`, `uv.lock`,
+and `.python-version`, plus Hatchling-generated `PKG-INFO` and its automatically
+included root `.gitignore`, beneath the single versioned archive root. Hatchling
+1.27 force-includes that ignore file even with `ignore-vcs = true`; no other
+ignore files are permitted. Require local caches/bytecode to be absent. Run
+`validate_sdist` from `tests/installed_package_smoke.py` against the **actual
+release sdist**, without optimized Python, before accepting assets. Unexpected
+paths, links, Beads state/backups/interactions, agent dependencies, or arbitrary
+private directories block release; do not extract or inspect private contents.
+Nested `.gitignore` files are not a packaging security boundary. The separate
+Git source archive retains tracked documentation/reference material; the lean
+sdist intentionally omits it. Repeat member validation on the downloaded sdist.
+
 ## Validate the actual wheel and hash assets
 
 For the wheel that will actually be uploaded, repeat the existing smoke's
@@ -98,19 +116,70 @@ and keep scratch outside the source checkout:
    independent values/migration state, no WAL or candidate leftovers, and the
    expected CLI options. Retain command results and the tested wheel's SHA-256.
 
-Generate `SHA256SUMS` in `$OUT` over **exactly** the source archive, bundle, wheel
-and sdist, using their relative basenames (for example `sha256sum <four explicit
+Generate `SHA256SUMS` in `$OUT` over **exactly** the source archive, bundle, wheel,
+sdist and separately approved Beads archive below, using their relative basenames
+(for example `sha256sum <five explicit
 basenames> > SHA256SUMS` from that directory). Do not hash the manifest itself,
 logs, scratch files or unrelated builds. Run `sha256sum -c SHA256SUMS`; compare
 the wheel hash with the actual-wheel acceptance record. Record SHA, tool versions,
 tests and hashes in the release Bead, never private logs or credentials.
 
+## Beads history for rehosting
+
+Publishing Beads history requires explicit approval because issues and historical
+content may be sensitive. For this release it is approved as a separate public
+asset, `hurdat2_etl-v0.2.0-beads.tar.gz`. Never package the active embedded database
+or incidental local backups. Use the installed `bd` backup interface (validated
+with Beads 1.2.2), with one writer and a fresh local output directory:
+
+```bash
+bd --sandbox backup status --json
+bd --sandbox backup init /absolute/scratch/beads-backup
+bd --sandbox backup sync
+bd --sandbox backup status --json
+```
+
+Check the configured destination is the intended local path before syncing.
+Initialization replaces the default backup registration; preserve an existing
+registration deliberately rather than overwriting it unreviewed. Sync can make
+a Beads-managed pre-backup commit. Wrap only the complete generated backup output
+in a tarball, preserving hidden entries. This is an exported backup, not a source
+Git bundle or JSONL snapshot. Include its hash in `SHA256SUMS`.
+
+Verify restore in a disposable clone first. Before any Beads initialization,
+remove the cloned public `sync.remote` setting and set `dolt.local-only: true`;
+keep auto-push, backup publication and export staging disabled. Point the clone's
+Git origin at a local/offline location during verification, not public GitHub.
+`--sandbox` disables auto-push but is not a network isolation guarantee.
+
+```bash
+bd --sandbox init --prefix etl --non-interactive --role maintainer --skip-hooks --skip-agents
+bd --sandbox backup restore /absolute/scratch/unpacked/beads-backup --force
+bd --readonly --sandbox dolt remote list --json
+```
+
+Use `--force` only against that disposable initialized database. Initialization
+may create a local Git commit and rewrite local sync configuration; inspect it
+again after restore. Compare issue details, dependencies, comments and per-issue
+`bd history --limit 0` with the source via `bd`, never raw database access. This
+verifies the history exposed by Beads, not an independent database-wide audit.
+Configure the internal Git and Beads remotes explicitly before normal use;
+do not blindly run bootstrap/pull against inherited public settings. Remote refs
+must be reviewed before pushing `main` or enabling cross-machine writes.
+
+Restore may register its input directory as a backup destination; do not sync
+into the only downloaded copy. On the source, use `bd backup remove` to unregister
+the temporary destination afterward if none was configured before the export;
+this leaves the generated backup intact. Record the snapshot cut: final release
+closure necessarily occurs after the snapshot and is synchronized separately.
+
 ## Draft, download, publish
 
 With approval, push only the new tag (`git push origin refs/tags/v0.2.0`), verify
 its remote object and peeled SHA, then use `gh release create v0.2.0 --verify-tag
---draft --title "v0.2.0" --notes-file docs/releases/v0.2.0.md` with the five
-explicit asset paths. Do not upload globs that can include unrelated files.
+--draft --title "v0.2.0" --notes-file docs/releases/v0.2.0.md` with the six
+explicit asset paths, including the Beads archive and manifest.
+Do not upload globs that can include unrelated files.
 Confirm the draft targets the tested tag and has exactly the intended assets.
 
 Download draft assets as an authenticated maintainer with `gh release download
@@ -124,7 +193,8 @@ Publish with `gh release edit v0.2.0 --draft=false` only after all checks pass.
 Download again into another empty directory and verify the public asset set,
 manifest and every hash. Record the release URL and exact evidence in Beads.
 Only then close the release Bead and perform separately authorized `bd dolt
-push`/handoff verification. Beads history is not in the source archive or bundle;
-never include embedded database files or transport refs as release assets.
+push`/handoff verification. Beads history is in its separate approved backup, not
+the source archive or source bundle; never include active embedded database files
+or transport refs in those artifacts.
 Finish on clean `main`, reporting any pending remote synchronization rather than
 claiming that source publication backed up Beads.
