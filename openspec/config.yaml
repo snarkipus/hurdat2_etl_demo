@@ -1,9 +1,11 @@
 schema: spec-driven
 
 context: |
-  Brownfield NOAA HURDAT2 ETL pipeline; approved DuckDB baseline is 9af5d7a.
-  Python ^3.12, Poetry and poetry.lock, Typer, Pydantic, SQLAlchemy,
-  DuckDB, Alembic, Rich/logging, pytest, Ruff, and mypy remain unchanged.
+  Brownfield NOAA HURDAT2 ETL pipeline; historical DuckDB bootstrap baseline was 9af5d7a.
+  Current tools: Python >=3.13,<4 (3.13 pin), uv/uv.lock, PEP 621/Hatchling,
+  Typer, Pydantic, SQLAlchemy, DuckDB, packaged Alembic migrations, Rich,
+  structlog JSON-line diagnostics, pytest, Ruff, and BasedPyright standard.
+  Locked local hooks and Linux quality/wheel plus targeted Windows CI are configured.
   Root AGENTS.md is canonical repository guidance; read it before implementation.
   OpenSpec owns specification and intent. Beads owns execution state and dependencies.
   After reviewing proposal artifacts, map tasks.md to a Beads dependency graph;
@@ -15,7 +17,10 @@ context: |
   artifacts, not evidence that the proposed architecture/tooling is implemented.
   Work sequentially in one checkout on feature branches; main is protected.
   No commits, pushes, or Dolt remote sync without explicit user approval.
-  The CLI deletes an existing output database; use disposable output paths.
+  The CLI builds, migrates, commits, verifies and closes a sibling candidate before
+  atomic publication. Existing output requires --replace; publication failure retains
+  the verified candidate for manual recovery. No coordinate repair or automatic backup.
+  Use ordinary local filesystems and quiescent writers; see README.md for operating limits.
 
 rules:
   proposal:

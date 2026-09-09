@@ -6,6 +6,7 @@ current behavior, and proposed direction; adding a file does not approve it.
 
 | Location | Purpose and authority |
 | --- | --- |
+| [Project README](../README.md) | Current setup, CLI usage, output acceptance/recovery, and development checks; executable code/configuration determines behavior. |
 | [Agentic workflow](agentic-workflow.md) | Current development, verification, and cross-machine handoff conventions. |
 | [OpenSpec specs](../openspec/specs/) | Accepted requirements captured through OpenSpec; not a claim of complete retrospective coverage. |
 | [OpenSpec changes](../openspec/changes/) | Proposed requirements, designs, and derived implementation checklists. Beads owns execution state. |
@@ -23,13 +24,15 @@ current behavior, and proposed direction; adding a file does not approve it.
 
 ## Target Architecture
 
-The forthcoming diagram describes architecture, tooling, and a baseline we
-intend to move toward. It is not a description of the current implementation.
-When a modernization change is scoped, place its diagram and editable source
+The [modernization diagram](../openspec/changes/modernize-reference-etl/assets/ETL_diagram_v2.png)
+is a proposal reference, not a current-state authority. Its reviewed meaning and
+hash remain in the change's [design](../openspec/changes/modernize-reference-etl/design.md).
+For future scoped changes, place their diagrams and any editable source
 under `openspec/changes/<change>/assets/` and reference them from `design.md`.
 Label retained components, proposed changes, and unresolved decisions explicitly.
 Do not create a placeholder change or assume its requirements are approved just
-to store an image. No new target diagram is included in this cleanup.
+to store an image. Current operating guidance lives in the project README and
+`AGENTS.md`; this reconciliation adds no architecture documentation or diagram.
 
 The diagram supports explicit requirements; it does not authorize toolchain or
 runtime migrations on its own. Review the scope, map the resulting `tasks.md` to

@@ -41,8 +41,8 @@ The implementation follows modern software engineering practices, including clea
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/etl_pipeline.git
-   cd etl_pipeline
+   git clone https://github.com/snarkipus/hurdat2_etl_demo.git
+   cd hurdat2_etl_demo
    ```
 
 2. Install the pinned Python and locked project/development dependencies:
@@ -63,6 +63,11 @@ Run the ETL pipeline with:
 uv run --locked etl-pipeline --input /path/to/hurdat2.txt --output /path/to/database.duckdb
 ```
 
+This is a single-command app: do not add a `run` or `run-etl` subcommand.
+The output parent directory must already exist. DuckDB Spatial installation
+may need network access (or a compatible cached extension); unavailable Spatial
+prevents publication, rather than silently disabling verification.
+
 Options:
 - `--input`, `-i`: Path to the input HURDAT2 text file (required)
 - `--output`, `-o`: Path to the output DuckDB database file (required)
@@ -80,8 +85,88 @@ UTC timestamp, severity, run ID, and applicable operation/stage and error contex
 Each CLI invocation owns and closes its log handler; library diagnostics use the
 same bridge and run-level filter (library-specific thresholds still apply).
 Stage construction alone does not create a log file or configure host logging.
+Existing host handlers remain attached; run exit restores the caller's logging
+level and context. This is local diagnostic output, not an audit/rotation or
+concurrent-run logging service. Manage log retention externally. Events avoid
+full source records and SQL bound-parameter dumps by default, but paths, IDs,
+exception text and tracebacks can appear: review logs before sharing them.
 
 <img src="docs/assets/readme/help.png" alt="ETL Pipeline Demo CLI Help" width="800">
+
+### Output Acceptance and Operating Limits
+
+Each run is a full refresh: the CLI applies packaged Alembic migrations to
+`head` on a unique sibling candidate, loads and commits it, then independently
+checks persisted counts against accepted loader inputs. It closes database
+resources before publishing. Existing output is never migrated, appended to,
+or used as an upsert target. Direct Unit-of-Work callers must initialize schema
+explicitly; entering a UoW does not create or repair tables. Normal CLI execution
+does not use the repository's `alembic.ini` or its `data/hurdat.duckdb` default.
+
+Observation `geom` is WKT **text**, `POINT(longitude latitude)`, not a native
+geometry column; spatial queries use `ST_GeomFromText(geom)`. Every stored
+geometry must parse as a nonempty point with finite longitude in `[-180, 180]`
+and latitude in `[-90, 90]`, inclusive. No clamping, wrapping, coordinate repair,
+or dropping persisted rows makes verification pass: `270E` still normalizes to
+`270.0` and fails output acceptance. Existing skipped-record and last-wins storm
+deduplication rules remain; even zero accepted rows can pass. This gate is not
+a source checksum or a complete meteorological data-quality audit.
+
+To deliberately replace output after preserving any operator-required backup:
+
+```bash
+uv run --locked etl-pipeline --input /path/to/hurdat2.txt --output /path/to/database.duckdb --replace
+```
+
+Use one active run per destination on an ordinary local filesystem, with
+external writers stopped for the entire run. Destination symlinks, non-regular
+files, input/output aliases and detected destination `.wal` files are refused.
+Never delete an old WAL to bypass refusal; resolve it through the owning
+database's normal shutdown/recovery. WAL checks are not writer coordination.
+Allow space for the old database, the complete candidate and transient WAL/temp
+state (and any backup you make); input and transformed rows are also materialized
+in memory. No automatic space reservation or backup is provided.
+
+Creation uses an atomic hard link that refuses late collisions; explicit
+replacement uses atomic replace. Unsupported/denied operations fail without
+copy, forced access, or delete-first fallback. Network filesystems, hostile path
+changes and concurrent ownership are outside the supported envelope. Atomic
+visibility is not guaranteed power-loss durability: crashes/abrupt termination
+can leave artifacts, with no automatic sweeping, retry or crash recovery.
+
+### Failure and Manual Recovery
+
+- Processing, verification or finalization failure exits non-zero, preserves old
+  output and attempts to remove only run-owned incomplete artifacts. Cleanup
+  warnings identify leftovers; these are **not** verified recovery candidates.
+- Publication failure exits non-zero and reports the finalized **verified
+  candidate retained** path; old output remains unchanged. Fix the reported
+  permission/lock/filesystem problem before considering manual publication.
+- After publication, redundant-name cleanup or optional summary failures warn
+  without undoing output or changing success. A leftover candidate name after
+  successful hard-link publication can refer to the same file as the output.
+
+There is no recovery CLI subcommand. For a candidate explicitly reported as
+verified and retained after publication failure, a conservative manual recovery
+is to expose it under a **new, unused sibling name**, leaving the old destination
+and retained candidate untouched. First stop writers, confirm the reported
+candidate is a regular non-symlink standalone file with no `.wal`, and ensure
+neither the chosen new name nor its `.wal` exists. From the checkout, substitute
+the actual absolute paths in this command (ordinary local directory only):
+
+```bash
+uv run --locked python -c 'import os, sys; os.link(sys.argv[1], sys.argv[2])' /absolute/path/.database.duckdb.RUN.duckdb /absolute/path/recovered.duckdb
+```
+
+The hard-link operation refuses an existing destination atomically and leaves
+the retained name in place. If it fails, stop; do not add a forced overwrite or
+copy/delete fallback. Reopen the recovered database read-only and inspect its
+contents before using it or removing the redundant retained name. Both names
+refer to the same data, **not independent backups**. Do not use this procedure
+for incomplete or unexplained crash leftovers. Replacing the original pathname
+is a separate deliberate operator decision; alternatively rerun the ETL with
+`--replace` after resolving the cause. A successful replacement keeps no old-file
+backup.
 
 ## Project Structure
 
@@ -99,7 +184,7 @@ etl_pipeline/
 │       ├── transform/     # Modules for transforming and validating extracted data
 │       ├── utils/         # Shared utility functions and classes
 │       ├── cli.py         # Command-line interface logic (using Typer)
-│       ├── core.py        # Core application logic, orchestration, and shared components
+│       ├── core.py        # Shared stage execution, logging, and Rich progress
 │       └── exceptions.py  # Custom exception classes for the pipeline
 └── tests/                 # Test suite for the project
     ├── integration/       # Integration tests (testing component interactions)
@@ -117,7 +202,7 @@ The ETL pipeline follows a three-stage architecture:
 2. **Transform Stage**:
    - Parses raw data into structured objects
    - Validates data using Pydantic models
-   - Handles anomalies and edge cases
+   - Retains existing normalization and skipped-record rules
 
 3. **Load Stage**:
    - Sets up DuckDB with spatial extensions
@@ -190,6 +275,41 @@ BasedPyright 1.40.0 is the selected stable checker. Ruff 0.11.2 and pre-commit
 4.2.0 remain locked: both support this Python 3.13 workflow, and hook parity
 does not require upgrading them or the existing test/build tools. Dependency
 updates must regenerate `uv.lock` with uv and pass these same checks.
+
+### Builds and Installed-Package Smoke
+
+Build the PEP 621/Hatchling sdist and wheel with `uv build` (outputs to `dist/`).
+The wheel includes the CLI and Alembic resources. For the Linux acceptance smoke,
+use an existing temporary directory **outside** the checkout:
+
+```bash
+uv run --locked python tests/installed_package_smoke.py --temp-root /tmp
+```
+
+The script builds the wheel from the sdist, installs locked runtime dependencies
+with hashes into a fresh non-editable environment, runs `pip check`, then checks
+installed CLI help and fixture ETL values/migrations independently. CLI output
+and logs stay in its isolated temporary working directory, removed on exit.
+It needs uv, Python 3.13 and package-index/Spatial access or caches; do not use
+`-O`/`PYTHONOPTIMIZE`, which would disable its assertions.
+
+### Continuous Integration
+
+[GitHub Actions CI](.github/workflows/ci.yml) runs on PRs targeting `main` and
+pushes to `main`, using uv 0.12.10 and the shared Python 3.13 pin:
+
+- **Linux quality and wheel** (`ubuntu-24.04`): locked non-fixing Ruff/format,
+  BasedPyright, full pytest with the 80% branch-measured gate, and the installed
+  wheel smoke outside the checkout.
+- **Windows runtime and publication** (`windows-2025`): ten targeted real
+  DuckDB/new-and-replacement output and file-lifecycle cases, not the full Linux
+  suite or coverage gate.
+
+Both jobs explicitly install/load/query Spatial and fail on errors; they do not
+skip unavailable Spatial. They require no private credentials for public-fork
+PRs. Workflow checks do not by themselves configure required branch-protection
+checks. Test runs write ignored coverage artifacts; fixtures isolate their
+working directories so they do not modify the developer's pipeline log.
 
 ## License
 
