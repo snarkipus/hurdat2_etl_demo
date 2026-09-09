@@ -68,9 +68,9 @@ Contract: [development baseline](specs/development-baseline/spec.md).
   Beads: `etl-0ix.8`.
 - [ ] 5.2 Include CLI and migration resources in wheel/sdist builds; verify `uv build` and install the wheel outside the checkout, reusing the representative fixture for one migrated, verified ETL smoke rather than a second acceptance matrix.
   Beads: `etl-0ix.11`.
-- [ ] 5.3 Replace mypy with BasedPyright standard diagnostics and narrow justified exceptions; verify source/tests pass without blanket ignores or unrelated runtime redesign.
+- [x] 5.3 Replace mypy with BasedPyright standard diagnostics and narrow justified exceptions; verify source/tests pass without blanket ignores or unrelated runtime redesign.
   Beads: `etl-0ix.9`.
-- [ ] 5.4 Align Ruff and local hooks with locked project tools, correcting existing lint/format issues without value changes; verify non-fixing lint/format checks, a hook run, and the full suite's existing 80% branch-coverage gate.
+- [x] 5.4 Align Ruff and local hooks with locked project tools, correcting existing lint/format issues without value changes; verify non-fixing lint/format checks, a hook run, and the full suite's existing 80% branch-coverage gate.
   Beads: `etl-0ix.9`.
 - [x] 5.5 After 5.1, review and upgrade runtime libraries and necessary transitives to compatible stable Python 3.13 releases; record before/after versions and justified holds, review declared ranges, and generate the uv lock without unrelated dev/build-tool churn. Verify clean locked setup, preserved independent value/migration/schema/Spatial/transaction/publication assertions, full branch coverage of at least 80%, and no new quality regressions. Complete before 5.2 and 7.2 so downstream packaging, CI, cleanup, and final acceptance validate the upgraded stack; typing/hook migration and structlog adoption remain separate scopes.
   Beads: `etl-0ix.17`.

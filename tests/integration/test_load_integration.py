@@ -13,7 +13,7 @@ from etl_pipeline.migrations import initialize_database
 
 # Import Pydantic models for creating test data
 from etl_pipeline.transform.models import Observation as PydanticObservation
-from etl_pipeline.transform.models import Point
+from etl_pipeline.transform.models import Point, StormStatus
 from etl_pipeline.transform.models import Storm as PydanticStorm
 
 
@@ -69,14 +69,14 @@ def sample_integration_data():
     # Initialize observations WITH storm_id
     obs1 = PydanticObservation(
         date=datetime(2024, 1, 1, 12, 0, 0),
-        status="HU",
+        status=StormStatus.HURRICANE,
         location=Point(latitude=25.0, longitude=-75.0),
         max_wind=100,
         storm_id=storm1.storm_id,
     )
     obs2 = PydanticObservation(
         date=datetime(2024, 1, 1, 18, 0, 0),
-        status="TS",
+        status=StormStatus.TROPICAL_STORM,
         location=Point(latitude=25.0, longitude=-76.0),
         max_wind=60,
         storm_id=storm1.storm_id,

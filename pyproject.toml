@@ -20,7 +20,7 @@ etl-pipeline = "etl_pipeline.cli:app"
 
 [dependency-groups]
 dev = [
-    "mypy>=1.15.0,<2",
+    "basedpyright>=1.40.0,<2",
     "pytest>=8.3.5,<9",
     "pytest-cov>=6.0.0,<7",
     "ruff>=0.11.2,<0.12",
@@ -64,33 +64,13 @@ line-ending = "auto"
 docstring-code-format = true
 docstring-code-line-length = "dynamic"
 
-# Mypy Configuration
-[tool.mypy]
-python_version = "3.13"
-warn_return_any = true
-disallow_untyped_defs = true
-check_untyped_defs = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_unused_configs = true
-disallow_any_generics = true
-namespace_packages = true
-explicit_package_bases = true
-mypy_path = "src"  # Tell mypy where to look for modules
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-warn_return_any = false
-check_untyped_defs = false
-disallow_any_generics = false
-disallow_incomplete_defs = false
-disallow_untyped_decorators = false
-no_implicit_optional = false
-
-[[tool.mypy.overrides]]
-module = "etl_pipeline.migrations.versions.*"
-ignore_errors = true
+# BasedPyright Configuration
+[tool.basedpyright]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+include = ["src", "tests"]
+extraPaths = ["src"]
+reportUnnecessaryTypeIgnoreComment = "error"
 
 # Pytest Configuration
 [tool.pytest.ini_options]

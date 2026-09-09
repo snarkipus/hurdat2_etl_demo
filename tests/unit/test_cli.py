@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 from etl_pipeline.cli import _check_candidate_ready, _reserve_candidate, _warn, app
 from etl_pipeline.exceptions import ETLError, LoadError
 from etl_pipeline.publication import publish_candidate
-from etl_pipeline.transform.models import Observation, Point, Storm
+from etl_pipeline.transform.models import Observation, Point, Storm, StormStatus
 from etl_pipeline.transform.transform import TransformStage
 from tests.unit.transform.test_transform import (
     INVALID_OBS_ROW,
@@ -71,14 +71,14 @@ def test_last_wins_and_exact_flattened_loader_inputs(cli_boundary, tmp_path, moc
     revised_obs = Observation(
         storm_id="AL011851",
         date=datetime(1851, 6, 25, 6, tzinfo=UTC),
-        status="HU",
+        status=StormStatus.HURRICANE,
         location=Point(latitude=28.0, longitude=-95.4),
         max_wind=80,
     )
     other_obs = Observation(
         storm_id="AL021851",
         date=datetime(1851, 7, 5, 12, tzinfo=UTC),
-        status="TS",
+        status=StormStatus.TROPICAL_STORM,
         location=Point(latitude=22.2, longitude=-97.5),
         max_wind=40,
     )

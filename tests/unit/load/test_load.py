@@ -10,7 +10,7 @@ from etl_pipeline.load.unit_of_work import AbstractUnitOfWork
 
 # Import Pydantic models for creating test data
 from etl_pipeline.transform.models import Observation as PydanticObservation
-from etl_pipeline.transform.models import Point  # Needed for Observation
+from etl_pipeline.transform.models import Point, StormStatus
 from etl_pipeline.transform.models import Storm as PydanticStorm
 
 
@@ -57,14 +57,14 @@ def sample_transformed_data(mocker):
     # Initialize observations WITH storm_id, assuming PydanticObservation model includes it
     obs1 = PydanticObservation(
         date=mocker.MagicMock(),
-        status="HU",
+        status=StormStatus.HURRICANE,
         location=Point(latitude=25.0, longitude=-75.0),
         max_wind=100,
         storm_id=storm1.storm_id,
     )
     obs2 = PydanticObservation(
         date=mocker.MagicMock(),
-        status="TS",
+        status=StormStatus.TROPICAL_STORM,
         location=Point(latitude=26.0, longitude=-76.0),
         max_wind=60,
         storm_id=storm1.storm_id,
@@ -76,7 +76,7 @@ def sample_transformed_data(mocker):
     )
     obs3 = PydanticObservation(
         date=mocker.MagicMock(),
-        status="TD",
+        status=StormStatus.TROPICAL_DEPRESSION,
         location=Point(latitude=30.0, longitude=-80.0),
         max_wind=30,
         storm_id=storm2.storm_id,
@@ -157,7 +157,7 @@ def test_load_stage_process_missing_lat_lon(load_stage, mock_uow, mocker):
     # Create a valid observation first
     valid_obs_with_loc = PydanticObservation(
         date=mock_date,
-        status="HU",
+        status=StormStatus.HURRICANE,
         location=Point(latitude=25.0, longitude=-75.0),  # Valid Point
         max_wind=100,
         storm_id="AL01MISSING",

@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Typed with mypy](https://img.shields.io/badge/mypy-typed-blue.svg)](https://mypy.readthedocs.io/en/stable/)
+[![Typed with BasedPyright](https://img.shields.io/badge/BasedPyright-standard-blue.svg)](https://docs.basedpyright.com/)
 
 A modern ETL (Extract, Transform, Load) pipeline for processing HURDAT2 hurricane track data into a structured DuckDB database.
 
@@ -26,7 +26,7 @@ The implementation follows modern software engineering practices, including clea
 - **Statistical Analysis**: Comprehensive summary of processed hurricane data
 - **Robust Error Handling**: Custom exception hierarchy and detailed error reporting
 - **Comprehensive Tests**: 80%+ code coverage with unit and integration tests
-- **Type Safety**: Fully type-annotated with mypy validation
+- **Type Checking**: BasedPyright standard diagnostics for source and tests
 - **DuckDB Integration**: Fast, efficient geospatial querying capabilities
 - **Detailed Logging**: Structured logging throughout the pipeline
 
@@ -147,10 +147,11 @@ uv run --locked pytest --no-cov tests/unit/transform/test_parser.py  # Focused o
 
 ### Type Checking
 
-Run mypy type checking:
+Run BasedPyright with standard diagnostics for `src` (including migrations) and
+`tests`, without blanket diagnostic suppressions:
 
 ```bash
-uv run --locked mypy src tests
+uv run --locked basedpyright
 ```
 
 ### Linting
@@ -162,9 +163,26 @@ uv run --locked ruff check src tests
 uv run --locked ruff format --check src tests
 ```
 
-Use `uv run --locked ruff format src tests` to apply formatting. Mypy and the
-existing remote Ruff/mypy hook versions remain in use during this baseline
-increment; hook alignment and known source lint cleanup are separate work.
+Use `uv run --locked ruff format src tests` to apply formatting.
+
+### Local Hooks
+
+```bash
+uv run --locked pre-commit install
+uv run --locked pre-commit run --all-files
+```
+
+All four hooks run the full configured scope through `uv run --locked`: Ruff
+lint with fixes, Ruff formatting, BasedPyright, then pytest with the same 80%
+branch-measured coverage gate. Hooks can change files; inspect their diff and
+rerun until clean. The non-fixing commands above are the verification gates.
+No remote Ruff/type-checker environments or separately resolved dependencies
+are used. Hooks also run for configuration-only changes.
+
+BasedPyright 1.40.0 is the selected stable checker. Ruff 0.11.2 and pre-commit
+4.2.0 remain locked: both support this Python 3.13 workflow, and hook parity
+does not require upgrading them or the existing test/build tools. Dependency
+updates must regenerate `uv.lock` with uv and pass these same checks.
 
 ## License
 
