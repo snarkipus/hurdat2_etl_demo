@@ -1,5 +1,4 @@
 import logging
-import os
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -16,15 +15,9 @@ from rich.progress import (
 
 class BaseLogger:
     """
-    Handles file-based structured logging for ETL stages.
-
-    Configures a logger instance to write formatted messages to a specified log file.
-    Ensures log directory exists and avoids duplicate handlers.
+    Bind stage context without owning handlers or changing global logger levels.
+    The CLI (or an embedding caller) owns diagnostic configuration.
     """
-
-    LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-    LOG_FILE = "logs/pipeline.log"
 
     def __init__(self, name: str, log_level: int = logging.INFO):
         """
@@ -32,23 +25,12 @@ class BaseLogger:
 
         Args:
             name: The name of the logger (typically the stage name).
-            log_level: The logging level (e.g., logging.INFO, logging.DEBUG).
+            log_level: Retained for stage-call compatibility; configured by the CLI.
         """
-        # Create logs directory if it doesn't exist
-        os.makedirs(os.path.dirname(self.LOG_FILE), exist_ok=True)
-
         self.name = name
-        self.logger = logging.getLogger(self.name)
-        self.logger.setLevel(log_level)
-
-        # Ensure we don't add duplicate handlers if this class is initialized
-        # multiple times (e.g., in tests or multiple stage instances)
-        if not any(isinstance(h, logging.FileHandler) for h in self.logger.handlers):
-            # Create and configure a file handler
-            formatter = logging.Formatter(fmt=self.LOG_FORMAT, datefmt=self.DATE_FORMAT)
-            file_handler = logging.FileHandler(self.LOG_FILE)
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
+        self.logger = logging.LoggerAdapter(
+            logging.getLogger(f"etl_pipeline.{name}"), {"stage": name}, merge_extra=True
+        )
 
     def debug(self, message: str, *args: Any, **kwargs: Any) -> None:
         self.logger.debug(message, *args, **kwargs)

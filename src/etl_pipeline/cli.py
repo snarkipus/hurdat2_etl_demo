@@ -14,8 +14,10 @@ from rich.panel import Panel
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from structlog.contextvars import bind_contextvars, bound_contextvars
 
 from .core import ProgressManager
+from .diagnostics import run_diagnostics
 from .exceptions import (
     ETLError,
     ExtractionError,
@@ -38,6 +40,12 @@ app = typer.Typer()
 
 def _warn(console: Console, message: str) -> None:
     """Keep optional presentation from changing the persistence outcome."""
+    try:
+        logging.getLogger(__name__).warning(
+            message, exc_info=sys.exc_info()[0] is not None
+        )
+    except Exception:  # noqa: S110 - warnings must not replace the persistence outcome
+        pass
     try:
         console.print(f"Warning: {message}", style="yellow", markup=False)
     except Exception:
@@ -101,7 +109,9 @@ def _dispose_engine(engine: Engine) -> None:
 @contextmanager
 def _report_session(output_db: Path) -> Iterator[Session]:
     """Own summary resources without masking a query failure during cleanup."""
-    engine = create_engine(f"duckdb:///{output_db}", connect_args={"read_only": True})
+    engine = create_engine(
+        f"duckdb:///{output_db}", connect_args={"read_only": True}, hide_parameters=True
+    )
     try:
         session = sessionmaker(bind=engine)()
         try:
@@ -156,17 +166,29 @@ def run_etl(
     """
     Runs the ETL pipeline to process HURDAT2 data and load it into a DuckDB database.
     """
+    numeric_log_level = getattr(logging, log_level.upper(), logging.INFO)
+    with run_diagnostics(numeric_log_level):
+        _run_etl(input_file, output_db, replace, log_level)
+
+
+def _run_etl(
+    input_file: Path,
+    output_db: Path,
+    replace: bool,
+    log_level: str,
+) -> None:
+    logger = logging.getLogger(__name__)
     # Create a clearly styled console for the entire pipeline
     console = Console(highlight=False)  # Disable syntax highlighting for cleaner output
 
     try:
         preflight_output(input_file, output_db, replace=replace)
     except ETLError as error:
+        logger.error("preflight_failed", exc_info=True)
         console.print(f"Output preflight failed: {error}", style="red", markup=False)
         raise typer.Exit(code=1) from error
 
-    # Determine the numeric log level from the string option
-    numeric_log_level = getattr(logging, log_level.upper(), logging.INFO)
+    logger.info("preflight_completed")
 
     # Print initial messages to the console with cleaner formatting
     console.print(
@@ -189,10 +211,13 @@ def run_etl(
     ready = False
     published = False
     try:
+        bind_contextvars(operation="candidate")
         candidate = _reserve_candidate(output_db, console)
-        engine = create_engine(f"duckdb:///{candidate}")
+        engine = create_engine(f"duckdb:///{candidate}", hide_parameters=True)
+        bind_contextvars(operation="migration")
         with engine.begin() as connection:
             initialize_database(connection)
+        logger.info("migration_completed")
         dynamic_session_factory = sessionmaker(bind=engine)
         uow_factory = partial(
             SqlAlchemyUnitOfWork, session_factory=dynamic_session_factory
@@ -201,11 +226,11 @@ def run_etl(
         progress_manager.progress.start()
 
         # --- Execute Extract Stage ---
+        bind_contextvars(operation="extract", stage="extract")
         progress_manager.add_task("extract_stage", "[bold]Extract Stage[/bold]", 100)
         extract_stage = ExtractStage(
             console=console,
             progress_manager=progress_manager,
-            log_level=numeric_log_level,
         )
 
         extract_input = {"file_path": str(input_file)}
@@ -214,23 +239,27 @@ def run_etl(
 
         # Materialize the iterator
         raw_data_list = list(raw_data_iterator)
+        logger.info("extraction_completed", extra={"rows": len(raw_data_list)})
         progress_manager.update("extract_stage", advance=90)
         progress_manager.complete_task(
             "extract_stage", f"Extract: {len(raw_data_list):,} rows processed"
         )
 
         # --- Execute Transform Stage ---
+        bind_contextvars(operation="transform", stage="transform")
         progress_manager.add_task(
             "transform_stage", "[bold]Transform Stage[/bold]", 100
         )
         transform_stage = TransformStage(
             console=console,
             progress_manager=progress_manager,
-            log_level=numeric_log_level,
         )
 
         progress_manager.update("transform_stage", advance=10)
         transformed_storms = transform_stage.execute(raw_data_list)
+        logger.info(
+            "transformation_completed", extra={"storms": len(transformed_storms)}
+        )
         progress_manager.update("transform_stage", advance=90)
         progress_manager.complete_task(
             "transform_stage",
@@ -249,19 +278,25 @@ def run_etl(
         load_input = (unique_storms_list, all_observations)
 
         # --- Execute Load Stage ---
+        bind_contextvars(operation="load", stage="load")
         progress_manager.add_task("load_stage", "[bold]Load Stage[/bold]", 100)
         load_stage = LoadStage(
             uow_factory=uow_factory,
             console=console,
             progress_manager=progress_manager,
-            log_level=numeric_log_level,
         )
 
         progress_manager.update("load_stage", advance=10)
         expected_storms = len(unique_storms_list)
         expected_observations = len(all_observations)
         storm_count, observation_count = load_stage.execute(load_input)
+        logger.info(
+            "loading_completed",
+            extra={"storms": storm_count, "observations": observation_count},
+        )
+        bind_contextvars(operation="verification", stage=None)
         verify_persisted_dataset(engine, expected_storms, expected_observations)
+        logger.info("verification_completed")
         progress_manager.update("load_stage", advance=90)
         progress_manager.complete_task(
             "load_stage",
@@ -271,14 +306,20 @@ def run_etl(
         # Closing the last connection checkpoints committed DuckDB state.
         # Clear ownership before disposal so a failed close is not retried.
         owned_engine, engine = engine, None
+        bind_contextvars(operation="finalization")
         _dispose_engine(owned_engine)
         _check_candidate_ready(candidate)
         ready = True
+        logger.info("finalization_completed")
+        bind_contextvars(operation="publication")
         publish_candidate(candidate, output_db, replace=replace)
         published = True
-        _cleanup_candidate(candidate, console)
+        logger.info("publication_completed", extra={"output": str(output_db)})
+        with bound_contextvars(operation="cleanup"):
+            _cleanup_candidate(candidate, console)
 
         # All remaining presentation is optional after atomic publication.
+        bind_contextvars(operation="summary")
         progress_manager.progress.stop()
         console.print("[bold green]✓ ETL pipeline completed successfully[/bold green]")
 
@@ -546,7 +587,9 @@ def run_etl(
         logger = logging.getLogger(f"etl_pipeline.{stage_name}")
         try:
             logger.error(
-                f"ETL Error occurred in stage '{stage_name}': {e}", exc_info=True
+                f"ETL Error occurred in stage '{stage_name}': {e}",
+                exc_info=True,
+                extra={"candidate": str(candidate) if candidate else None},
             )
             console.print(
                 f"ETL Error in stage '{stage_name}': {e}", style="red", markup=False
@@ -558,7 +601,8 @@ def run_etl(
         if engine is not None:
             _dispose_engine(engine)
         if candidate is not None and not ready:
-            _cleanup_candidate(candidate, console)
+            with bound_contextvars(operation="cleanup", stage=None):
+                _cleanup_candidate(candidate, console)
         try:
             progress_manager.progress.stop()
         except Exception as error:

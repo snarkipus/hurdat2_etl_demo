@@ -13,6 +13,7 @@ dependencies = [
     "duckdb>=1.5.5,<2",
     "duckdb-engine>=0.17.0,<0.18",
     "sqlalchemy>=2.0.52,<3",
+    "structlog>=26.1.0,<27",
 ]
 
 [project.scripts]

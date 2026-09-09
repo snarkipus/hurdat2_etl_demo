@@ -1,29 +1,11 @@
-import logging
-
 import pytest
 from rich.progress import TaskID
 
 
 @pytest.fixture(autouse=True)
 def isolated_working_directory(tmp_path, monkeypatch):
-    """Keep stage-created logs local and release only test-created file handlers."""
+    """Keep CLI-owned logs and other runtime artifacts out of the checkout."""
     monkeypatch.chdir(tmp_path)
-    existing_handlers = {
-        handler
-        for logger in logging.Logger.manager.loggerDict.values()
-        if isinstance(logger, logging.Logger)
-        for handler in logger.handlers
-    }
-    yield
-    for logger in logging.Logger.manager.loggerDict.copy().values():
-        if isinstance(logger, logging.Logger):
-            for handler in logger.handlers[:]:
-                if (
-                    isinstance(handler, logging.FileHandler)
-                    and handler not in existing_handlers
-                ):
-                    logger.removeHandler(handler)
-                    handler.close()
 
 
 @pytest.fixture

@@ -74,6 +74,13 @@ Options:
   or automatic backup is provided.
 - `--log-level`, `-l`: Logging level (defaults to INFO)
 
+Diagnostics append structlog-backed JSON lines to `logs/pipeline.log` in the
+working directory, separate from Rich progress and summaries. Events carry a
+UTC timestamp, severity, run ID, and applicable operation/stage and error context.
+Each CLI invocation owns and closes its log handler; library diagnostics use the
+same bridge and run-level filter (library-specific thresholds still apply).
+Stage construction alone does not create a log file or configure host logging.
+
 <img src="docs/assets/readme/help.png" alt="ETL Pipeline Demo CLI Help" width="800">
 
 ## Project Structure
