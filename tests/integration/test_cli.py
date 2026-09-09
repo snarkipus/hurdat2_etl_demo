@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from rich.text import Text
 from sqlalchemy import create_engine, text
 from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.engine import Engine
@@ -59,7 +60,7 @@ def test_run_etl_success(tmp_path, cli_engines, replace):
     print("Help Output:\n", result_help.stdout)
     assert result_help.exit_code == 0, "Invoking --help failed"
     # Adjust assertion to match the actual help output for a single-command app
-    assert "Usage: run-etl [OPTIONS]" in result_help.stdout
+    assert "Usage: run-etl [OPTIONS]" in Text.from_ansi(result_help.stdout).plain
 
     # --- Invoke the actual run-etl command ---
     # Revert to invoking the app with the command name string
