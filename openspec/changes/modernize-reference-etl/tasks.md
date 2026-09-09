@@ -66,7 +66,7 @@ Contract: [development baseline](specs/development-baseline/spec.md).
 
 - [x] 5.1 Switch to Python >=3.13,<4 with a 3.13 pin, PEP 621/Hatchling, and a generated uv lockfile; declare SQLAlchemy directly and remove superseded Poetry configuration only after locked setup and the baseline value tests pass. Verify metadata rejects Python 3.12 and locked setup does not rewrite dependencies.
   Beads: `etl-0ix.8`.
-- [ ] 5.2 Include CLI and migration resources in wheel/sdist builds; verify `uv build` and install the wheel outside the checkout, reusing the representative fixture for one migrated, verified ETL smoke rather than a second acceptance matrix.
+- [x] 5.2 Include CLI and migration resources in wheel/sdist builds; verify `uv build` and install the wheel outside the checkout, reusing the representative fixture for one migrated, verified ETL smoke rather than a second acceptance matrix.
   Beads: `etl-0ix.11`.
 - [x] 5.3 Replace mypy with BasedPyright standard diagnostics and narrow justified exceptions; verify source/tests pass without blanket ignores or unrelated runtime redesign.
   Beads: `etl-0ix.9`.
